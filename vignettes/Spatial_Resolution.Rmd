@@ -1,0 +1,224 @@
+---
+title: "visiumSpatialSolutions: Spatial Resolution"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{visiumSpatialSolutions: Spatial Resolution}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE)
+```
+
+
+# Prerequisites
+
+- Package Installation
+- Data Availability
+- Correct Fiducial Alignment
+- Aligned Tissue positions (`rds` or `csv` file, or `data.frame` object,
+incl. information regarding orientation adjustments)
+
+For ensuring the prerequisites are met, we recommend, checking out the 
+[Fiducial Detection](%\VignetteIndexEntry{visiumSpatialSolutions: Fiducial_Detection}) vignette, first.
+
+---
+
+## Vignette Datasets
+
+- [Visium_FFPE_Human_Ovarian_Cancer](https://www.10xgenomics.com/datasets/human-ovarian-cancer-1-standard)
+- [CytAssist_11mm_FFPE_Human_Ovarian_Carcinoma](https://www.10xgenomics.com/datasets/human-ovarian-cancer-11-mm-capture-area-ffpe-2-standard)
+
+The required files can be downloaded and extracted using the function `download_vignette_files()` as demonstrated in the 
+[Fiducial Detection](%\VignetteIndexEntry{visiumSpatialSolutions: Fiducial_Detection}) vignette. 
+
+Alternatively, you can use your own data.
+
+---
+
+## Settings
+
+```{r settings}
+# load packages
+library(dplyr)
+library(visiumSpatialSolutions)
+
+# define directories
+output_dir <- file.path(getwd(), "data")
+figures_dir <- file.path(getwd(), "figures")
+```
+
+---
+
+# Visium spatial-array geometry
+
+The derivation and visualization of candidate physical coordinate
+reconstructions for 6.5 mm and 11 mm Visium array are available in the
+[Reconstruction_Models](https://Zockimonster.github.io/visiumSpatialSolutions/).
+
+The JSON-assisted coordinate dimensions are derived in [Spatial_Alignment](https://Zockimonster.github.io/visiumSpatialSolutions/).
+
+---
+
+## Define Array-specific settings
+
+**Small array**
+
+```{r settings-for-loading-small-array-input}
+L <- 6500
+visium_sample <- "Visium_FFPE_Human_Ovarian_Cancer"
+figures_sample <- file.path(figures_dir, visium_sample)
+mtx_type <- "h5"
+mtx_name <- "filtered"
+img_res <- "hires"
+```
+**Large array**
+
+```{r settings-for-loading-large-array-input}
+L <- 11000
+visium_sample <- "CytAssist_11mm_FFPE_Human_Ovarian_Carcinoma"
+figures_sample <- file.path(figures_dir, visium_sample)
+mtx_type <- "h5"
+mtx_name <- "filtered"
+img_res <- "hires"
+```
+
+--- 
+
+## Load input data
+
+```{r load-input, eval=FALSE}
+spex <- load_spex(visium_dir=output_dir, visium_sample=visium_sample, matrix_name=mtx_name, matrix_file_format=mtx_type, image_resolution=img_res)
+tp_aligned <- load_aligned_tp(file_dir=output_dir, visium_sample=visium_sample)
+```
+
+---
+
+### Spatial Conversion
+
+To align the spot positions with the spatially resolved image, we define the settings & use the function `spatial_conversion`:
+
+```{r spatial-conversion, eval=FALSE}
+sfe <- spatial_conversion(aligned_tp=tp_aligned, spex=spex, L_capture_area=L, image_resolution =img_res)
+```
+
+**Spatial containment:
+The issue regarding the spots not being fully contained by the capture 
+area using the default `spatial_geometry` with `hex100` is expected, so far.**
+
+To create the spatially resolved plot using the colGeometry for `spatial_pixels`,
+we can use the function `create_sfe_plot`:
+
+```{r create-sfe-plot, eval=FALSE}
+sfe_plot <- create_sfe_plot(sfe=sfe, image_resolution= img_res)
+```
+
+Optionally, the spatially resolved plot can be saved to the `figures_sample` directory, using:
+
+```{r save-sfe-plot, eval=FALSE}
+ggplot2::ggsave(filename = file.path(figures_sample, "spatially_resolved_plot.png"), 
+                plot= sfe_plot, width = 6, height = 6, units = "in")
+```
+
+
+```{r plot-sfe, echo=FALSE, out.height="40%", fig.align="center", fig.cap="**Spatially resolved Image with aligned Spot Positions.**"}
+knitr::include_graphics(file.path(figures_sample,  "spatially_resolved_plot.png"))
+```
+
+---
+
+### Interactive Spot Selection
+
+
+The `SpatialFeatureExperiment` object with the spatially aligned array and pixel positions can further be used for interactive spot selection,
+with the tissue image overlaid by the spatially aligned `colGeometry` as specified in the argument `geom_id`.
+The selected barcodes can easily be downloaded as `csv` file using the `Download selected spots` button within the application. 
+The `download_filename` can be adjusted in the function call, but also it can be changed when the download option is chosen. 
+
+```{r interactive-spot-selection, eval=FALSE}
+p_ia <- prepare_interactive_spot_selection(sfe, image_resolution =img_res, download_filename = "selected_A.csv")
+shiny::shinyApp(p_ia$user_interface, p_ia$server_settings)
+```
+
+To reload selected barcodes and
+
+- add this information to the spatially aligned tissue positions, we can use: 
+
+```{r add-selected-barcodes, eval=FALSE}
+# out_dir equals the directory, you selected for downloading the selected tissue positions
+# since we selected the output_dir, we use
+out_dir <- output_dir
+selected_A <- read.csv(file.path(out_dir, "selected_A.csv"))
+tp_aligned$selected_A <- ifelse(tp_aligned$barcode %in% selected_A$barcode, 1, 0) 
+table(tp_aligned$selected_A, useNA="ifany")
+```
+
+
+- add these to the `SpatialFeatureExperiment` object, we can use:
+
+```{r add-to-sfe, eval=FALSE}
+SpatialFeatureExperiment::colGeometry(sfe, "spatial_pixels")$selected_A <- tp_aligned$selected_A[match(colnames(sfe, "spatial_pixels"), tp_aligned$barcode)]
+```
+
+
+### Multiple Sets of selected Spots
+
+This application can easily be used for selecting distinct sets of spots, download the barcodes for each selection, and combine this information, afterwards:
+
+Selection of B spots:
+
+```{r selection-B, eval=FALSE}
+p_ia <- prepare_interactive_spot_selection(sfe, image_resolution = img_res, download_filename="selected_B.csv")
+shiny::shinyApp(p_ia$user_interface, p_ia$server_settings)
+```
+
+Afterwards, we can add and combine this information in the aligned tissue position data, using:
+
+```{r add-B, eval=FALSE}
+selected_B <- read.csv(file.path(out_dir, "selected_B.csv"))
+tp_aligned$selected_B <- ifelse(tp_aligned$barcode %in% selected_B$barcode, 1, 0)
+SpatialFeatureExperiment::colGeometry(sfe, "spatial_pixels")$selected_B <- tp_aligned$selected_B[match(colnames(sfe, "spatial_pixels"), tp_aligned$barcode)]
+table(tp_aligned$selected_A, tp_aligned$selected_B, useNA="ifany")
+```
+
+Which can be further combined into one column, using
+
+```{r one_column-AB, eval=FALSE}
+tp_aligned$selected_AB <- rep(NA_character_, nrow(tp_aligned))
+tp_aligned$selected_AB[tp_aligned$selected_A == 0 & tp_aligned$selected_B== 0] <- "none"
+tp_aligned$selected_AB[tp_aligned$selected_A == 1 & tp_aligned$selected_B== 0] <- "A"
+tp_aligned$selected_AB[tp_aligned$selected_A == 0 & tp_aligned$selected_B== 1] <- "B"
+tp_aligned$selected_AB[tp_aligned$selected_A == 1 & tp_aligned$selected_B== 1] <- "both"
+table(tp_aligned$selected_AB, useNA="ifany")
+```
+
+To create a spatially resolved plot for the combined spot selection, we can add this information to the `colGeometry` of the sfe object, and use:
+
+```{r add-AB-to-sfe, eval=FALSE}
+SpatialFeatureExperiment::colGeometry(sfe, "spatial_pixels")$selected_AB <- tp_aligned$selected_AB[match(colnames(sfe, "spatial_pixels"), tp_aligned$barcode)]
+AB_plot <- create_sfe_plot(sfe, image_resolution =img_res, color_by="selected_AB", plot_title="AB Spot Selection", color_source = "geometry")
+```
+
+Optionally, the plot with the spatially resolved spot selection can be saved to the `figures_sample` directory, using:
+
+```{r save-sfe-selection-plot, eval= FALSE}
+ggplot2::ggsave(filename = file.path(figures_sample, "spatially_resolved_spot_selection.png"), 
+                plot= AB_plot, width = 6, height = 6, units = "in")
+```
+
+Exemplary, we created one plot for 2 spot selections for the small sample:
+
+```{r plot-sfe-selection-small, echo=FALSE, out.height="40%", fig.align="center", fig.cap="**Spatially resolved Image with aligned Spot Selection.**"}
+knitr::include_graphics(file.path(figures_dir, "Visium_FFPE_Human_Ovarian_Cancer",  "spatially_resolved_spot_selection.png"))
+```
+
+---
+
+```{r session-info}
+sessionInfo()
+``` 

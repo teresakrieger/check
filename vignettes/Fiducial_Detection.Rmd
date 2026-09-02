@@ -1,0 +1,373 @@
+---
+title: "visiumSpatialSolutions: Fiducial Detection"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{visiumSpatialSolutions: Fiducial Detection}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  warning = FALSE,
+  message = FALSE)
+```
+
+
+# Introduction
+
+`visiumSpatialSolutions` provides tools for spatial reconstruction, 
+visualization, and interactive analysis of non-HD Visium spot-based arrays, 
+including:
+
+- visual assessment of fiducial detection and coordinate orientation,
+- conversion between array and pixel spot positions into spatial dimensions,
+- spatially resolved visualization,
+- interactive spot selection within the spatially resolved image,
+- visualization and interactive adjustments of selected spot positions, and
+- download of interactively selected spots. 
+
+---
+
+# Installation
+
+You can install the development version of visiumSpatialSolutions from [GitHub](https://github.com/Zockimonster/visiumSpatialSolutions) with:
+
+```{r installation, eval=FALSE}
+# install.packages("devtools")
+# devtools::install_github("Zockimonster/visiumSpatialSolutions")
+# or
+# install.packages("remotes")
+remotes::install_github("Zockimonster/visiumSpatialSolutions")
+```
+
+Afterwards, the package can be loaded, using 
+
+```{r load-package}
+library(visiumSpatialSolutions)
+```
+
+---
+  
+# Vignette Datasets
+
+Throughout the vignettes we will use the following datasets:
+
+- [Visium_FFPE_Human_Ovarian_Cancer](https://www.10xgenomics.com/datasets/human-ovarian-cancer-1-standard)
+- [CytAssist_11mm_FFPE_Human_Ovarian_Carcinoma](https://www.10xgenomics.com/datasets/human-ovarian-cancer-11-mm-capture-area-ffpe-2-standard)
+
+The required files can be downloaded and extracted using the function `download_vignette_files()`. 
+
+Alternatively, you can use your own data.
+
+---
+
+## Download Vignette Data
+
+First, we need to define an output directory (`output_dir`), where the 
+downloaded sample folders (`small_sample` and / or `large_sample`)
+should be created:
+
+```{r define-settings}
+# define output directory
+output_dir <- file.path(getwd(), "data")
+# define sample names
+small_sample <- "Visium_FFPE_Human_Ovarian_Cancer"
+large_sample <- "CytAssist_11mm_FFPE_Human_Ovarian_Carcinoma"
+```
+
+The download helper is intended to enable running the package-related vignettes, only.
+For downloading the full dataset or a distinct set of files, all files are available for download
+in `Output and supplemental Files` on the Visium website.
+
+All downloaded files and folders will be saved to `<output_dir>/<visium_dir>/<visium_sample>/outs/`, 
+to match the expected Space Ranger output structure.
+
+Downloaded files include:
+
+- Matrix Files: Filtered (default) and/or raw matrix (`matrix_name`) in h5 (default) or sparse file
+format (`matrix_file_format`). If the sparse file format is selected, a folder 
+`<matrix_name>_feature_bc_matrix` with the `matrix.mtx`,`features.tsv` and `barcodes.tsv` files will be created in 
+`<output_dir>/<visium_dir>/<visium_sample>/outs/`. Since this file format requires approx. 2.5-times 
+as much memory, h5 is selected as default file format.
+- Spatial Files: The low (default) and / or high resolution tissue image (`image_resolution`), the
+detected_tissue_image, the scalefactors_json.json file (Distinct from 10X Loupe Browser Manual 
+Alignment json file!),and the tissue position csv file. All spatial files will be saved to a 
+`spatial` folder created in `<output_dir>/<visium_dir>/<visium_sample>/outs/`.
+
+For downloading the data, we define an output directory. Within this directory, a folder will be
+created for each sample as specified by `visium_sample` with sub directories matching the standard 
+Space Ranger output structure () and use `download_vignette_files()`, selecting the low and high 
+resolution image files, specified with `image_resolution`, to be downloaded:
+
+
+```{r download-vignette-data, eval=FALSE}
+# Download vignette-related files for the 
+# Human Ovarian Cancer 6.5mm dataset and for the 
+# Human Ovarian Cancer 11mm dataset
+download_vignette_files(output_dir = output_dir, visium_sample = c(small_sample, large_sample),
+                        matrix_file_format="h5", matrix_name = "filtered", image_resolution=c("lowres", "hires"))
+# based on default settings identical to
+# download_vignette_files(output_dir = output_dir, image_resolution=c("lowres", "hires"))
+```
+
+
+---
+
+## Check Fiducial Alignment
+
+```{r check-fiducial-alignment}
+plot_title_small_sample <- "Human Ovarian Cancer (Visium FFPE, 6.5mm Array)"
+plot_title_large_sample <- "Human Ovarian Cancer (Visium FFPE, CytAssist, 11mm Array)"
+
+# define figures directory
+figures_dir <- file.path(getwd(), "figures")
+# figures for Visium_FFPE_Human_Ovarian_Cancer (small sample)
+figures_6500 <- file.path(figures_dir, small_sample)
+dir.create(figures_6500, recursive = TRUE, showWarnings = FALSE)
+# figures for CytAssist_11mm_FFPE_Human_Ovarian_Carcinoma (large sample)
+figures_11000 <- file.path(figures_dir, large_sample)
+dir.create(figures_11000, recursive = TRUE, showWarnings = FALSE)
+```
+
+
+For correct Fiducial Detection, the hollow circles must match the grey dots 
+in the four corners (Fiducial Markers) in the `detected_tissue_image` resp.
+in the `aligned_fiducials` image, as well as for the lines in between 
+(Fiducial Frame). This ensures proper alignment of matrix barcode positions, 
+encoding the gene counts per spot, and the barcodes in the tissue position file.
+
+To check the correct fiducial alignment and for aligning the array and pixel positions 
+with the tissue image, you can use the function  `check_fiducial_alignment()`.
+
+
+The function expects the standard Space Ranger directory structure
+`<visium_dir>/<visium_sample>/outs/spatial/` with the visium directory 
+(`visium_dir`) and sample folder (`visium_sample`).
+
+From the `spatial` sub directory the tissue image (`tissue_<image_resolution>_image`), 
+the`detected_tissue_image` and the tissue positions file (`tp_file_name`) will be 
+loaded, and a named list will be returned:
+
+- tissue_image: A `ggplot` object with the tissue image in the selected resolution
+(NULL, if the image couldn't be loaded).
+- detected_tissue_image: A `ggplot` object showing the detected tissue with 
+the aligned fiducial frame (NULL, if the image couldn't be loaded).
+- array_spots: A `ggplot` object showing the Visium array-grid positions.
+- pixel_positions: A `ggplot` object showing the spot-related pixel coordinates 
+in the full-resolution image.}
+- tp: The tissue positions `data.frame`  with named attribute `orientation_adjustments`, 
+including information about adjustments made to the array positions `adjust_array` 
+and to the pixel positions `adjust_pixels`.
+
+---
+
+### Small Array
+
+```{r fiducial-alignment-small, eval=FALSE}
+check_alignment <- check_fiducial_alignment(visium_dir=output_dir, visium_sample= small_sample, 
+                                            tp_file_name="tissue_positions_list.csv")
+```
+
+**Note: In older Space Ranger Version (before 2.0.0), the tissue positions file
+had no header, and the file name was `tissue_positions_list.csv`.**
+
+To combine the ggplot objects into a 
+
+```{r combine-plots, eval=FALSE}
+combined_plot <- ggpubr::ggarrange(check_alignment[["tissue_image"]],check_alignment[["detected_tissue_image"]], 
+                                   check_alignment[["array_spots"]], check_alignment[["pixel_positions"]], 
+                                   ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+# optionally, save the unmodified combined plot grid
+ggplot2::ggsave(filename = file.path(figures_6500, "check_alignment.jpg"), plot= combined_plot, width = 10, height = 10, units = "in")
+```
+
+Alternative packages for combining ggplot objects include:
+
+- `gridExtra::grid.arrange()`,
+- `patchwork::wrap_plots()`,
+- `cowplot::align_plots()`
+
+```{r image-fiducial-alignment-small, echo=FALSE, fig.height=10, fig.width=10, fig.align="center"}
+knitr::include_graphics(file.path(figures_6500, "check_alignment.jpg"))
+```
+
+---
+
+### Large Array
+
+```{r fiducial-alignment-large, eval=FALSE}
+check_alignment <- check_fiducial_alignment(visium_dir=output_dir, visium_sample= large_sample)
+# combine
+combined_plot <- ggpubr::ggarrange(check_alignment[["tissue_image"]],check_alignment[["detected_tissue_image"]], 
+                                   check_alignment[["array_spots"]], check_alignment[["pixel_positions"]], 
+                                   ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+# optionally, save the unmodified combined plot grid
+ggplot2::ggsave(filename = file.path(figures_11000, "check_alignment.jpg"), plot= combined_plot, width = 10, height = 10, units = "in")
+```
+
+
+```{r image-fiducial-alignment-large, echo=FALSE, fig.height=10, fig.width=10, fig.align="center"}
+knitr::include_graphics(file.path(figures_11000, "check_alignment.jpg"))
+```
+
+
+---
+
+## Image Positions and Coordinates
+
+To adjust the coordinates within the `tissue_positions` file to match the tissue 
+image (`lowres` or `hires`), you can adjust the orientation the array positions
+using the `adjust_array` resp. of the pixel positions using the `adjust_pixels`
+argument in the function.
+
+The `adjust_array` resp. `adjust_pixels` arguments enable 3 reorientation steps 
+in the following order:
+
+1) `swap`: changes the row and column axis 
+2) `x` mirrors the column positions (min <-> max)
+3) `y` mirrors the row positions (min <-> max)
+
+**Note: These arguments do only change the visualization of array (`adjust_array`)
+resp. pixel positions (`adjust_pixels`) for visual alignment of the tissue image 
+and the spot positions. They do not change the barcodes assigned to each spot,
+and therefore aren't sufficient for realigning Space Ranger output in case of misaligned
+Fiducial Markers.**
+
+
+### Swapping requirements
+
+Without swapping correction the axes positions, including the number of spots 
+assigned to the axes positions will match the coordinate axes:
+
+10x array                       Cartesian coordinate
+
+*col* position  ───────────────►    *x* axis
+*row* position  ───────────────►    *y* axis
+
+
+If Swapping correction is required to match the array (`adjust_array`) or pixel 
+(`adjust_pixels`) axis positions to match the tissue image, the ranges and number
+of spots assigned to the axes positions will also be changed at the coordinate axes:
+
+10x array                       Cartesian coordinate
+
+*col* position  ───────────────►    *y* axis
+*row* position  ───────────────►    *x* axis
+
+
+Though the hollow circles match the grey dots, indicating the correct detection of the
+Fiducial Markers and of the Fiducial Frame, the orientation of the array and the pixel 
+positions doesn't match the image orientation.
+
+---
+
+### Small Array
+
+Though correct fiducial alignment, the array and pixel positions don't match the orientation 
+of the tissue image.
+
+Too align the array and pixel positions with the tissue image for the `Visium_FFPE_Human_Ovarian_Cancer`
+sample, we can mirror the y axis for array (`adjust_array = "y"`) and pixel positions (`adjust_pixels = "y"`):
+
+```{r realigned-small, eval=FALSE}
+check_alignment <- check_fiducial_alignment(visium_dir=output_dir, visium_sample= small_sample,
+                                            tp_file_name="tissue_positions_list.csv", adjust_array = "y", 
+                                            adjust_pixels = "y")
+```
+
+Next, we save the aligned tissue position as `rds` and `csv` files:
+
+```{r save-tp-aligned-small, eval=FALSE}
+save_aligned_tp(tp = check_alignment$tp, out_dir = output_dir, visium_sample = small_sample, file_type = c("rds", "csv"))
+```
+
+For combining and saving the resulting plot grid, we use:
+
+```{r combine-and-save-plot, eval=FALSE}
+combined_plot_adj <- ggpubr::ggarrange(check_alignment[["tissue_image"]],check_alignment[["detected_tissue_image"]], 
+                                   check_alignment[["array_spots"]], check_alignment[["pixel_positions"]], 
+                                   ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+combined_plot_adj <- ggpubr::annotate_figure(combined_plot_adj, 
+                                             top = ggpubr::text_grob(plot_title_small_sample, 
+                                                                     color = "black", face = "bold", size = 15))
+# save aligned combined plot grid
+ggplot2::ggsave(filename = file.path(figures_6500, "check_alignment_adjusted.jpg"), plot= combined_plot_adj, width = 10, height = 10, units = "in")
+```
+
+```{r image-realigned-small, echo=FALSE, fig.height=10, fig.width=10, fig.align="center"}
+knitr::include_graphics(file.path(figures_6500, "check_alignment_adjusted.jpg"))
+```
+
+---
+
+### Large Array
+
+This time also the array and pixel positions don't align, implying distinct reorientation requirements.
+
+To match the positions of the array with the tissue image, we can mirror the array positions at the x- 
+and the y-axis. The pixel positions need the be mirrored at the y-axis, only. Saving the aligned tissue
+positions and the combined plot grid works like before:
+
+```{r realigned-large, eval=FALSE}
+check_alignment <- check_fiducial_alignment(visium_dir=output_dir, visium_sample= large_sample, 
+                                            adjust_array = c("x", "y"), adjust_pixels = "y")
+# save aligned tissue position information
+save_aligned_tp(tp = check_alignment$tp, out_dir = output_dir, visium_sample = large_sample, file_type = c("rds", "csv"))
+# combine & add a common title
+combined_plot_adj <- ggpubr::ggarrange(check_alignment[["tissue_image"]],check_alignment[["detected_tissue_image"]], 
+                                   check_alignment[["array_spots"]], check_alignment[["pixel_positions"]], 
+                                   ncol=2, nrow=2, common.legend = TRUE, legend="bottom")
+combined_plot_adj <- ggpubr::annotate_figure(combined_plot_adj, 
+                                             top = ggpubr::text_grob(plot_title_large_sample, 
+                                                                     color = "black", face = "bold", size = 15))
+# save aligned combined plot grid
+ggplot2::ggsave(filename = file.path(figures_11000, "check_alignment_adjusted.jpg"), plot= combined_plot_adj, width = 10, height = 10, units = "in")
+```
+
+
+```{r image realigned large, echo=FALSE, fig.height=10, fig.width=10, fig.align="center"}
+knitr::include_graphics(file.path(figures_11000, "check_alignment_adjusted.jpg"))
+```
+
+
+---
+
+## Misalignment
+
+In contrast to simple orientation issues of array and pixel positions, 
+a misalignment of Fiducial Markers and the Fiducial Frame would result in
+mismatches of barcoded spots in the gene count matrix files and the tissue
+position file.
+This can't be resolved by changing the orientation of the array or the pixels.
+In this situation [Manual Realignment](https://www.10xgenomics.com/support/software/space-ranger/latest/analysis/inputs/image-fiducial-alignment),
+would be required, before proceeding. 
+
+For demonstration purposes, we imitated the misalignment of the fiducial markers, 
+using the Visium 6.5mm slide:
+
+```{r plot-misaligned-fiducial-markers, echo=FALSE, out.width="80%", fig.align="center", fig.cap="**Examplary Misalignment for the 6.5mm Visium capture area.**"}
+knitr::include_graphics(file.path(figures_6500, "misaligned_fiducials.png"))
+```
+
+
+To streamline the process of [Manual Realignment](https://www.10xgenomics.com/support/software/space-ranger/latest/analysis/inputs/image-fiducial-alignment),
+we started creating [visiumReorientation](https://github.com/Zockimonster/visiumReorientation), which helps with re-running Space Ranger, if
+the automatic alignment failed. Further reorientation approaches are still under evaluation, 
+and will be available within this package in the future.
+
+> **Marker Positions**
+>
+> According to the company's website [Spaceranger Image Recommendations](https://www.10xgenomics.com/support/software/space-ranger/latest/analysis/inputs/image-image-recommendation)
+> the hourglass fiducial marker should be in the upper-left corner of the image for automatic processing using Space Ranger.
+> Though, no reorientation of the Fiducial Frame would be required, if the hourglass fiducial marker can't be found in the 
+> upper-left corner, as long as the hollow circles align with the underlying grey dots (MAIL).
+
+---
+
+```{r session-info}
+sessionInfo()
+```
