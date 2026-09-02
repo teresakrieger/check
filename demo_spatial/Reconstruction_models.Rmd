@@ -1,0 +1,349 @@
+---
+title: "Reconstructing Visium Spatial Array Geometry"
+subtitle: "Candidate spatial-resolution models for 6.5 mm and 11 mm capture areas"
+author: "Eli Spies"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: true
+    anchor_sections: false
+    fig_caption: true
+    code_folding: hide
+    theme: cosmo
+    fontsize: 1.1em
+    css: css_spatial_resolution.css
+    includes:
+      after_body: darkmode.html
+    self_contained: true
+---
+
+```{r setup, include=FALSE}
+# code folding
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center")
+
+# define directory
+code_dir <-  "."
+```
+
+---
+
+# Motivation
+
+Spatial reconstruction of spot positions in Visium non-HD Arrays
+
+Visium spatial output provides array indices and image coordinates, but the physical placement of spot centres within the stated capture-area dimensions is not fully specified. This analysis evaluates candidate reconstructions under the reported array dimensions, spot diameter, array indexing and center-to-center distance information. Candidate geometries are tested for physical containment and non-overlap for the 6.5 mm and 11 mm Visium arrays.
+
+<div class="note-box">
+<strong>Coordinate-system note.</strong>
+Space Ranger reports the integer indices <code>array_row</code> and
+<code>array_col</code>. These manufacturer-defined names are retained
+throughout. When visualized here, <code>array_row</code> is shown on the
+horizontal plotting axis and <code>array_col</code> on the vertical plotting
+axis. This convention can appear counter-intuitive when compared with ordinary
+matrix row/column terminology.
+</div>
+
+---
+
+# Visium non-HD array geometry
+
+## Demo array
+
+```{r demo-array, echo=FALSE, out.width="70%", fig.align="center", fig.cap="**Schematic representation of Visium Array Positions**"}
+knitr::include_graphics(file.path(code_dir, "figures","demo_array_positions.png"))
+```
+
+---
+
+# Manufacturer Constraints
+
+### Array Geometry Information {.unnumbered}
+
+- [10xGenomics - Spatial_Output](https://www.10xgenomics.com/support/software/space-ranger/latest/analysis/outputs/spatial-outputs)
+- [10xGenomics - FAQ](https://kb.10xgenomics.com/s/article/360035487812-What-is-the-size-of-the-spots-on-the-Visium-Gene-Expression-Slide)
+- [10xGenomics - Glossary](https://www.10xgenomics.com/support/software/space-ranger/3.0/getting-started/space-ranger-glossary)
+
+MAIL
+
+$$
+axis \in \{row, col\} \\
+\text{Dimensional Constraints:} \\
+L_{axis} \ \wedge \ d_{axis} \  \wedge \ d_{diag} \ \wedge \ m_{axis} \ \wedge r_{spot} \in \mathbb{R}^+ \\
+n_{axis} \in \mathbb{N} \\
+\text{Array Geometry:} \\
+\text{C}_L: L = L_{row} = L_{col} \\
+\text{C}_n: (L, n_{row}, n_{col}) \in \{(6500 \mu m, 78L, 128L), (11000 \mu m, 128L, 224L)\} \\
+\text{C}_r: spot\_diameter = 55\mu m \Leftrightarrow r_{spot} =  27.5 \mu m \\
+\text{C}_{diag} : d_{diag}= \sqrt{{d_{row}}^2 + {d_{col}}^2} \\
+\text{C}_{noneverlap}: 
+\left\{
+\begin{matrix}
+d_{axis} \geq r_{spot} \\
+d_{diag} = \sqrt{{d_{row}}^2 + {d_{col}}^2} \geq 2*r_{spot} \\
+\end{matrix}
+\right.\\
+\text{C}_{axis}: L_{axis}=(n_{axis}-1)*d_{axis} + 2*m_{axis} \\
+\text{C}_m: m_{axis} \geq r_{spot} \models m_{axis} = r_{spot} + k_{axis}; \text{ with} \\
+ k_{axis} \in \mathbb{R} \  | \ 0 \leq k_{axis} \leq \frac{L_{axis}-(n_{axis}+1)*r_{spot}}{2}  | \text{ C}_{nonoverlap} \wedge \text{L}_{axis}  \\
+\text{C}_{hex} : \text{Hexagonal grid}\\
+\text{C}_{Lcr}: (\text{C}_L, \text{C}_{axis}) \models (n_{col}-1)*d_{col} + 2*k_{col} = (n_{row}-1)*d_{row} + 2*k_{row}
+$$
+
+---
+
+# Reconstruction models
+
+
+## Reported 100µm distance
+
+- [10xGenomics - FAQ](https://kb.10xgenomics.com/s/article/360035487572-What-is-the-spatial-resolution-and-configuration-of-the-capture-area-of-the-Visium-v1-Gene-Expression-Slide)
+- [10xGenomics - Glossary](https://www.10xgenomics.com/support/software/space-ranger/3.0/getting-started/space-ranger-glossary)
+- [EPFL - Swiss_Federal_Technology_Institute_of_Lausanne](https://www.epfl.ch/research/facilities/gene-expression-core-facility/wp-content/uploads/2024/02/Guidelines-10XG-Visium-by-GECF-vA.01.pdf)
+- [Crown_Bioscience](https://www.crownbio.com/10x-genomics-visium-technology)
+
+
+$$
+
+\text{100µm distance:}  \\
+\text{H}_{axes}: \ d_{col} = 100\mu m \ \wedge \ d_{row} = 100\mu m \ \ (case \ 1)  \\
+
+\text{100µm distance  between neighbors:}  \\
+\text{D}_{neighbor}=\{d_{diag},2d_{col},2d_{row}\}.  \\
+\text{H}_{100}:\exists D_{neighbor} \models d_{NN} \equiv 100 μm, \text{ with } \\
+\text{H}_{100} \implies 
+\left\{
+\begin{matrix}
+\text{H}_{2axes}: \ d_{2col} = 100\mu m \ \wedge \ d_{2row} = 100\mu m \ \ (case \ 2)  \\
+\text{H}_{diag}: \ d_{diag}= 100\mu m \ \wedge \text{H}_{2col}: \ 2d_{col} = 100\mu m \ \Leftrightarrow \ d_{col} = 50 \mu m \ \ (case \ 3) 
+\end{matrix}
+\right.
+$$
+
+---
+
+### Fixed distance between vertical and horizontal array units
+
+---
+
+### Case 1: Fixed distance of 100µm between axis units (H~axes~) {.unnumbered}
+
+$$
+\text{H}_{col} \models d_{col} = 100 \mu m\\
+\wedge \text{H}_{row} \models \ d_{row} = 100 \mu m \\
+(\text{C}_L, \text{C}_r, \text{C}_{axis}) \models k_{axis}= \frac{L}{2}-(n_{axis}-1)*50\mu m -27.5\mu m \ (a) \\
+\text{C}_{diag} \models d_{diag}=\sqrt{(100\mu m )^2 + (100\mu m )^2} =  100 \sqrt{2} \mu m  \approx 141.4214 \mu m (b)
+$$
+
+---
+
+
+### Case 2: Fixed distance of 100µm between vertical and horizontal spots (H~2axes~) {.unnumbered}
+
+$$
+\text{H}_{2col} \models d_{col} = 50 \mu m\\
+\wedge \text{H}_{2row} \models \ d_{row} = 50 \mu m \\
+(\text{C}_L,\text{C}_r, C_{axis}) \models k_{axis}=\frac{L}{2}-(n_{axis}-1)*25\mu m  -27.5\mu m  \ (a) \\
+\text{C}_{diag} \models d_{diag}=\sqrt{(50\mu m )^2 + (50\mu m)^2} = 50 \sqrt{2}\mu m  \approx 70.71068  \mu m (b)
+$$
+
+Case 1 & 2 incompatible with H~hex~: d~diag~ = 2d~col~
+
+$$
+\text{ case 1 & case 2}:\ d_{row} = d_{col} \\
+\wedge H_{diag}: d_{row} = d_{col}\sqrt{3} \\
+\Leftrightarrow 1 = \sqrt{3} \quad \mathbf{\color{red}{\bot}}
+\implies d_{row} \neq d_{col}
+$$
+
+---
+
+### Case 3: Distance of 100µm between diagonal with hexagonal grid (H~diag~) {.unnumbered}
+
+$$
+(\text{C}_{hex}, \text{H}_{diag}) \models d_{diag} = 100  \mu m \wedge d_{col} = 50  \mu m \\
+(\text{C}_{diag}, \text{C}_{hex}) \models d_{row}  = 50\sqrt{3} \mu m \\
+
+(\text{C}_L, \text{C}_{axis}) \models L=(n_{axis}-1)*d_{axis} + 2*(r_{spot}+k_{axis}) \\
+\Leftrightarrow k_{axis} = \frac{L  - (n_{axis}-1)*d_{axis}}{2} - r_{spot} \\
+\Leftrightarrow k_{col} = \frac{L  - (n_{col}*50\mu m-50\mu m)}{2} - 27.5 \mu m \Rightarrow k_{col} = \frac{L}{2} - n_{col}*25\mu m -2.5\mu m  \ (a) \\ 
+\wedge k_{row} = \frac{L}{2} - (n_{row}-1)*(25\sqrt{3} \mu m)-27.5\mu m \ (b)  \\
+$$
+
+### Hexagonal Grid {.unnumbered}
+
+$$
+\text{H}_{hex} : d_{diag}= 2d_{col} \\
+\overset{\text{C}_{diag}}{\implies} \sqrt{{d_{row}}^2 + {d_{col}}^2} = 2d_{col} \\
+\Leftrightarrow \ d_{row} = d_{col}\sqrt{3}  \\
+$$
+
+
+```{r demo-hexagonal-grid, echo=FALSE, out.width="70%", fig.align="center", fig.cap="**Hexagonal Grid with d~diag~ = 2d~col~**"}
+knitr::include_graphics(file.path(code_dir, "figures","demo_hexagonal_grid.png"))
+```
+
+---
+
+### Fixed distance between selected array units & equal margins
+
+$$
+\text{Equal margins:} \\
+\text{H}_{m_{equal}} : m = m_{col} = m_{row}  \implies k = k_{col} = k_{row} \\
+$$
+
+---
+
+### Case 4: Distance of 50µm between vertical array units {.unnumbered}
+
+$$
+\text{H}_{2col} \models d_{col} = 50  \mu m \\
+\text{H}_{m_{equal}} \models m = m_{row} = m_{col} \implies k = k_{col} = k_{row} \\
+(\text{C}_L, \text{C}_r, \text{C}_{col},\text{H}_{2col},\text{H}_{m_{equal}}) \models  k =\frac{L}{2}-(n_{col}-1)*25 \mu m -27.5\mu m \ (a) \\
+(\text{C}_{Lcr}, \text{H}_{2col}, \text{H}_{m_{equal}}) \models (n_{col}-1)*50 \mu m = (n_{row}-1)*d_{row}   \\
+\Leftrightarrow \ d_{row}= \frac{n_{col}-1}{n_{row}-1}*50 \mu m  \ (b) \ \\ 
+\text{C}_{diag} \models d_{diag} = \sqrt{(50 \mu m)^2 + (\frac{n_{col}-1}{n_{row}-1}*50 \mu m)^2}  \\
+\Leftrightarrow d_{diag} = 50 \mu m * \sqrt{1+(\frac{n_{col}-1}{n_{row}-1})^2} \ (c)
+$$
+
+---
+
+## Margin-derived models
+
+### Fixed-margin equations {.unnumbered}
+
+$$
+\text{H}_{100} \text{ optional:} \\
+(\text{C}_L, \text{C}_{axis}, \text{C}_{m}) \models \ L=d_{axis}*(n_{axis}-1) + 2*(r_{spot} + k_{axis}) \\
+\Leftrightarrow \ d_{axis} = \frac{L - 2*(r_{spot} + k_{axis})}{n_{axis}-1} (I) \\
+(\text{C}_{diag}, \text{C}_{m}) \models \ d_{diag}= \sqrt{(\frac{L - 2*r_{spot} - 2*k_{col}}{n_{col}-1})^2 + (\frac{L  - 2*r_{spot} -2*k_{row}}{n_{row}-1})^2} \ (II)
+$$
+
+---
+
+### Case 5: Minimal margins (k~min~) {.unnumbered}
+
+$$
+\text{H}{_{k_{min}}}: k=0 \mu m \\
+(I) \  d_{axis} = \frac{L - 2r_{spot}}{n_{axis}-1} (a) \\
+(II) \ d_{diag}= \sqrt{(\frac{L - 2r_{spot}}{n_{col}-1})^2 + (\frac{L  - 2r_{spot}}{n_{row}-1})^2} \\
+\Leftrightarrow \ d_{diag}= \sqrt{(\frac{L - 2r_{spot}}{n_{col}-1})^2 + (\frac{L  - 2r_{spot}}{n_{row}-1})^2}  \\
+\Leftrightarrow \ d_{diag}=  \frac{L- 2r_{spot}}{(n_{col}-1)*(n_{row}-1)}*\sqrt{(n_{col}-1)^2 + (n_{row}-1)^2} \ (b)
+$$
+---
+
+### Axis-distance-margin relation
+
+
+### Case 6: 1:1-relation (d~axis~ = m~axis~) {.unnumbered}
+
+$$
+\text{H}_{d:m}: d_{axis}=m_{axis} \\
+\text{H}_{d:m} \models\ m_{col} = d_{col}  \wedge\ m_{row} = d_{row} \\
+\implies k_{col} =d_{col}-r_{spot} \wedge  k_{row}=d_{row}-r_{spot}   \\
+(\text{C}_L, \text{C}_{col}, \text{H}_{d:m}) \models \ L=d_{col}*(n_{col}-1) + 2d_{col} \\
+\Leftrightarrow \ d_{col} = \frac{L}{n_{col}+1} (a) \\
+(\text{C}_L, \text{C}_{row}, \text{H}_{d:m}) \models \ L=d_{row}*(n_{row}-1) + 2d_{row} \\
+\Leftrightarrow \ d_{row} = \frac{L}{n_{row}+1} (b) \\
+(\text{C}_{diag}, \text{H}_{d:m}) \models \ d_{diag}= \sqrt{(\frac{L}{n_{col}+1})^2 + (\frac{L}{n_{row}+1})^2}  \\
+\Leftrightarrow \ d_{diag}= \frac{L*\sqrt{(n_{col}+1)^2 + (n_{row}+1)^2}}{(n_{col}+1)*(n_{row}+1)} (c)
+$$
+
+---
+
+```{r load-results, echo=FALSE, include=FALSE}
+df_cases <- utils::read.csv(file.path(code_dir, "tables","visium_candidate_spatial_reconstructions.csv"))
+selected_columns <- c("case_id", "d_row", "d_column", "d_diagonal", "min_spot_row", "max_spot_row", "min_spot_column",  "max_spot_column", "case_possible")
+```
+
+
+# Visium Array results
+
+Utilizing the previous equations for calculating the array-specific values, we can check, whether each case would be
+geometrically feasible (`case_possible`) under the assumption that the nominal values of each capture area, 
+namely 6.5mm for the small and 11mm for the large non-HD Visium Array, must include all complete 55-µm spots.
+
+## Small non-HD Array (6.5mm)
+
+$$
+\text{C}_{L}: L = L_{row} = L_{col} = 6500\mu m \\
+\text{C}_{n}: (L, n_{row}, n_{col}) \in \{(6500 \mu m, 78L, 128L) \\
+\text{C}_{r}: spot\_diameter = 55\mu m \Leftrightarrow r_{spot} =  27.5 \mu m \\
+\text{C}_{m}: m_{axis} \geq r_{spot} \models m_{axis} = r_{spot} + k_{axis};  \text{ with} \\
+ k_{axis} \in \mathbb{R} \  | \ 0 \leq k_{axis} \leq \frac{L_{axis}-(n_{axis}+1)*r_{spot}}{2}  | \text{ C}_{nonoverlap} \wedge \text{L}_{axis} \\
+\implies k_{max_{col}} = \frac{6500 \mu m-129*27.5\mu m}{2} =  1476.25 \mu m \\ 
+\wedge k_{max_{row}} = \frac{6500 \mu m-79*27.5\mu m}{2} =  2163.75 \mu m
+$$
+
+### Candidate geometries
+
+```{r small-array, echo=FALSE, out.width="120%", fig.align="center", fig.cap="**Candidate spatial reconstructions for the 6.5mm x 6.5mm Visium capture area.**"}
+knitr::include_graphics(file.path(code_dir, "figures","spatially_resolved_6500_micrometer_array_positions.png"))
+```
+
+
+### Numerical results
+
+```{r df-small, echo=FALSE}
+df_small <- df_cases[df_cases$L==6500, selected_columns]
+knitr::kable(df_small, digits = 3, caption = "<span style='font-size: 22px; font-weight: bold;'>Candidate geometry values for the 6.5 mm Visium array.</span>")
+```
+
+---
+
+## Large non-HD Array (11mm)
+
+$$
+\text{C}_{L}: L = L_{row} = L_{col} = 11000\mu m \\
+\text{C}_{n}: (L, n_{row}, n_{col}) \in \{(11000 \mu m, 128L, 224L) \\
+\text{C}_{r}: spot\_diameter = 55\mu m \Leftrightarrow r_{spot} =  27.5 \mu m \\
+\text{C}_{m}: m_{axis} \geq r_{spot} \models m_{axis} = r_{spot} + k_{axis};  \text{ with} \\
+ k_{axis} \in \mathbb{R} \  | \ 0 \leq k_{axis} \leq \frac{L_{axis}-(n_{axis}+1)*r_{spot}}{2}  | \text{ C}_{nonoverlap} \wedge \text{L}_{axis} \\
+\implies k_{max_{col}} = \frac{11000 \mu m-225*27.5\mu m}{2} = 2406.25 \mu m \\ 
+\wedge k_{max_{row}} = \frac{11000 \mu m-129*27.5\mu m}{2} =  3726.25 \mu m
+$$
+
+### Candidate geometries
+
+```{r large-array, echo=FALSE, out.width="120%", fig.align="center", fig.cap="**Candidate spatial reconstructions for the 11mm × 11mm Visium capture area.**"}
+knitr::include_graphics(file.path(code_dir, "figures","spatially_resolved_11000_micrometer_array_positions.png"))
+```
+
+
+### Numerical results
+
+```{r df-large, echo=FALSE}
+df_large <- df_cases[df_cases$L==11000, selected_columns]
+knitr::kable(df_large, digits = 3, caption = "<span style='font-size: 22px; font-weight: bold;'>Candidate geometry values for the 11 mm Visium array.</span>")
+```
+
+---
+
+# Reproducibility
+
+## Script availability
+
+The calculations and figures shown on this page are generated from:
+
+- [`code_reconstruction_models.R`](https://Zockimonster.github.io/visiumSpatialSolutions/demo_spatial/code_reconstruction_models.R)
+- [`functions_reconstruction_models.R`](https://Zockimonster.github.io/visiumSpatialSolutions/demo_spatial/functions_reconstruction_models.R)
+
+The full table comprising all array measurements is also available from:
+
+- [`visium_candidate_spatial_reconstructions.csv`](https://Zockimonster.github.io/visiumSpatialSolutions/demo_spatial/tables/visium_candidate_spatial_reconstructions.csv)
+
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
+

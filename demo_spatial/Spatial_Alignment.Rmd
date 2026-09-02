@@ -1,0 +1,642 @@
+---
+title: "Visium Spatial Array and Image Geometry"
+subtitle: "Manual Alignment-derived spatial and image information"
+author: "Eli Spies"
+output:
+  html_document:
+    toc: true
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+    toc_depth: 3
+    number_sections: true
+    anchor_sections: false
+    fig_caption: true
+    code_folding: hide
+    theme: cosmo
+    fontsize: 1.1em
+    css: css_spatial_resolution.css
+    includes:
+      after_body: darkmode.html
+---
+
+
+```{r setup, include=FALSE}
+# to be added to yaml header
+# self_contained: true
+
+# code folding
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center")
+```
+
+
+---
+
+# Motivation
+
+
+The coordinate transform used for fiducial registration is conceptually part of Space Ranger's alignment procedure, but it is not exposed as a documented field in the standard spatial output files. The Loupe manual-alignment JSON, available after [Manual Alignment](https://www.10xgenomics.com/support/software/space-ranger/latest/analysis/inputs/image-fiducial-alignment) using the 10X Loupe Browser, contains sufficient information to reconstruct a spatial transformation grid. However, 10x Genomics documents that JSON format as internal and not fixed.
+
+Distances in json file and information by Visium matches case 3 geometry from the Reconstruction models as well as the provided spatial information of 100µm distances to nearest neighbored spots remarkably well. 
+But, though strong evidence for selecting case 3 as underlying spatial grid, the geometry applied in case 3 fails tests for physical containment and non-overlap for the 6.5 mm and 11 mm Visium arrays, implying that the exact capture area boundary won't enable capturing all spots with distances as given. 
+
+Without further information, the question what geometrical boundary the manufacturer's nominal 6.5-mm and 11-mm capture-area dimensions actually refer to, remains unresolved. Given the strong evidence, we chose case 3 as default spatial grid for further spatially resolved analyses, though.
+
+---
+  
+# Data availability
+
+The spatial data for three 11mm and three 6.5mm arrays was downloaded from the 
+[10X Genomics Datasets download site](https://www.10xgenomics.com/datasets/) and 
+extracted using the command `tar -xzf $filename`.
+
+Datasets used: 
+
+11mm Arrays
+
+- [Human Glioblastoma 11mm](https://www.10xgenomics.com/datasets/human-brain-cancer-11-mm-capture-area-ffpe-2-standard)
+- [Human Lung Cancer 11mm](https://www.10xgenomics.com/datasets/human-lung-cancer-11-mm-capture-area-ffpe-2-standard)
+- [Human Ovarian Carcinoma 11mm](https://www.10xgenomics.com/datasets/human-ovarian-cancer-11-mm-capture-area-ffpe-2-standard)
+
+
+6.5mm Arrays
+
+- [Human Skin Melanoma 6.5mm](https://www.10xgenomics.com/datasets/human-melanoma-if-stained-ffpe-2-standard)
+- [Human Lung Squamous Cell Carcinoma 6.5mm](https://www.10xgenomics.com/datasets/human-lung-cancer-ffpe-2-standard)
+- [Human Ovarian Cancer 6.5mm](https://www.10xgenomics.com/datasets/human-ovarian-cancer-1-standard)
+
+
+Since no full resolution images were available, we loaded the `detected_tissue_image.jpg` files for manual alignment in the 10X Loupe Browser version 9, instead.
+
+After aligning the fiducial markers and selecting all spots, the `manual_alignment.png` images and the `${Slide_ID}.json` file was downloaded.
+
+To approach the question of deriving spatially resolved spot positions, the downloaded JSON files were validated internally, as well as they were compared to the tissue position files for each sample.
+
+---
+
+# Define Settings and load functions
+
+```{r settings}
+# define directories
+base_dir <- file.path("D:", "Visium_spatial")
+out_dir <- file.path(base_dir, "results")
+```
+
+---
+
+# Internal Validation of the 10X Loupe Browser generated Manual Alignment JSON file
+
+Loading the Manual Alignment JSON file using `jsonlite::fromJSON()` returns a
+list with geometry-related slots:
+
+- `transform` provides a 3x3-transformation matrix.
+- `oligo` includes a `data.frame` object with geometry information for 
+each spot on the capture area.
+- `fiducials` includes a `data.frame` object with geometry information 
+for each spot of the fiducial frame and fiducial symbols.
+
+The geometry information in `oligo` and `fiducials` comprises 
+information for eight columns:
+
+- slide geometry (`x`, `y`)
+- spot positions within a orange-crate packing grid (`row`, `col`)
+- image positions (`imageX`, `imageY`)
+- `dia` with spot diameters (not in micrometer)
+- whether the spot was selected to be in the `tissue`
+
+---
+
+## Fiducial Symbol Positions
+
+For aligning the Fiducial symbols with their visual positions in the manual-alignment resp. detected-tissue image,  while `array_col` needs to be on the horizontal axis and increases from left to right, whereas `array_row` is represented by the reversed vertical axis and increases from top to bottom. 
+
+
+| Array Position     | Image Position     |
+| :----------------- | :----------------- |
+| $row_{min}$        | Upper Image        |
+| $row_{max}$        | Lower Image        |
+| $col_{min}$        | Left Image         |
+| $col_{max}$        | Right Image        |
+
+Visual inspection of the detected-tissue images showed the same symbol arrangement across all six selected datasets. Consistent with the Visium slide convention placing the HOURGLASS fiducial marker in the upper-left corner, the four named fiducial symbols occurred at the same relative frame positions:
+
+| Fiducial Symbol    | Image Position     |
+| :----------------- | :----------------- |
+| HOURGLASS          | Upper left         |
+| TRIANGLE           | Lower left         |
+| HEXOPEN            | Lower right        |
+| HEXFILLED          | Upper right        |
+
+
+The fiducial slide-coordinate ranges were also consistent within each array format, depending on the capture area size,
+supporting a stable correspondence between the JSON fiducial coordinate system and the physical fiducial-frame layout.
+
+```{r fiducial-symbols, echo=FALSE}
+symbol_df <- utils::read.csv(file.path(out_dir, "symbol_df.csv"), row.names = 1)
+corner_positions <- c("Upper_left", "Lower_left", "Lower_right", "Upper_right")
+knitr::kable(symbol_df[, !colnames(symbol_df) %in% corner_positions], digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Fiducial Symbol Positions</span>")
+```
+
+
+get_ranges <- function(symbol_df,col){
+  range_col <- strsplit(symbol_df[,col], split = "-")
+  names(range_col) <- rownames(symbol_df)
+  lapply(range_col, function(x){
+    diff(as.numeric(x))})}
+    
+ranges_x <- get_ranges(symbol_df, "range_x")
+ranges_y <- get_ranges(symbol_df, "range_y")
+ranges_imageX <- get_ranges(symbol_df, "range_imageX")
+ranges_imageY <- get_ranges(symbol_df, "range_imageY")
+
+--- 
+
+## Matrix models
+
+The inverse of the forward ordinary least squares (OLS) transformation $solve(M) = M^{-1}$ 
+was compared with a second OLS transformation fitted independently in the reverse direction $M^{-1}_{lm}$.
+Because the two regressions minimize residuals in different dependent variables,  $solve(M)$ and $M^{-1}_{lm}$ 
+are expected to be close but need not be numerically identical.
+
+$$
+M_{var \rightarrow pred}=
+\begin{bmatrix} 
+    a & b & c \\ 
+    d & e & f \\
+    0 & 0 & 1
+\end{bmatrix} \approx M_{lm} =  \begin{bmatrix} 
+    \text{pred}_x[var_x] &  \text{pred}_x[var_y] &  \text{pred}_x[Intercept] \\ 
+     \text{pred}_y[var_y] &  \text{pred}_y[var_y] &  \text{pred}_y[Intercept]  \\
+    0 & 0 & 1
+\end{bmatrix}\\
+
+\ \\ \ \\
+
+\widehat{M^{-1}} = solve(M)  | \ det(M) \neq 0  \approx (\widehat{M})^{-1}= M^{-1}_{lm}  \\
+\ \\ \ \\
+M^{-1}_{pred \rightarrow var} = 
+\frac{1}{ae - db}
+\begin{bmatrix} 
+    e & -b &  bf - ec \\ 
+    -d & a &  dc - af \\
+    0 & 0 & ae -db
+\end{bmatrix} | \ det(M) \neq 0 \approx
+M^{-1}_{lm} =
+\begin{bmatrix} 
+    \text{var}_x[pred_x] & \text{var}_x[pred_y] & \text{var}_x[intercept] \\ 
+   \text{var}_y[pred_x] & \text{var}_y[pred_y] & \text{var}_y[intercept] \\ 
+    0 & 0 & 1
+\end{bmatrix}
+$$
+
+---
+
+# Image-Slide JSON Transformation Matrices
+
+Validation of the 3*3-transformation matrix from  Manual Alignment JSON file ensuring correct 
+alignment between Loupe slide-layout coordinates (`x`,`y`) and Loupe image coordinates (`imageX`, `imageY`).
+
+## Encoded transformation Steps
+
+All transformation matrices in the investigated Loupe manual-alignment JSON files `transform` slot 
+have the form of a two-dimensional similarity transformation with uniform scaling and rotation 
+along with a translation enabled by the 3rd dimension (c,d):
+
+$$
+A =
+\begin{bmatrix} 
+    a & b & c \\ 
+    -b & a & d \\
+    0 & 0 & 1
+\end{bmatrix}
+$$
+
+Overview of the transformation steps and the corresponding matrix values:
+
+| Matrix values        | Transformation     |
+| :------------------- | :----------------- |
+| (c,d)                | Translation        |
+| (a,b)                | Rotation           |
+| ($\sqrt{a^2 + b^2}$) | Uniform Scaling    |
+
+
+If $det(A)= a^2+b^2 \neq 0$, an inverse matrix $solve(A)= A^{-1}$ exists, with:
+
+$$
+A^{-1} =
+\frac{1}{a^2 + b^2}
+\begin{bmatrix} 
+    a & -b &  bd - ca \\ 
+    b & a &  -bc -ad \\
+    0 & 0 & a^2 + b^2
+\end{bmatrix} | \ det(A) = a^2+b^2 \neq 0
+$$
+
+---
+
+1) Slide $\rightarrow$ image transformation
+
+Does the transformation matrix in the JSON file encode slide $\rightarrow$ image transformation?
+
+### Linear Models
+
+For ensuring proper interpretation, all 3x3-transformation matrices $A$ from the `transform` slot 
+were compared to the Slide $\rightarrow$ Image transformation matrix $A_{lm}$ obtained by the linear 
+model coefficients for `A_imageX <- stats::coef(stats::lm(imageX ~ x+y, data = oligo))` and 
+`A_imageY <- stats::coef(stats::lm(imageY ~ x+y, data = oligo))` with:
+
+$$
+A_{lm} =
+\begin{bmatrix} 
+    A_{imageX}[x] & A_{imageX}[y] &  A_{imageX}[intercept] \\ 
+    A_{imageY}[x] & A_{imageY}[y] & A_{imageY}[intercept] \\
+    0 & 0 & 1
+\end{bmatrix}
+$$
+
+All 3x3-transformation matrices $A$ from the `transform` slot were compared to the results 
+of the linear model (`lm_identical`) and saved to `slide2image_transformation_matrix_A.csv`:
+
+```{r A-slide2image, echo=FALSE}
+df_A <- utils::read.csv(file.path(out_dir, "slide2image_transformation_matrix_A.csv"))
+knitr::kable(df_A, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation matrices for slide -> image conversion</span>")
+```
+
+
+### Maximum Errors
+
+The maximum error related to the slide to image coordinate transformation
+$\text{slide coordinates} \overset{A}{\rightarrow} \text{image coordinates}$ 
+across all samples is very small:
+
+```{r error-slide2image, echo=FALSE}
+df_A <- utils::read.csv(file.path(out_dir, "slide2image_transformation_inaccuracy.csv"))
+knitr::kable(df_A, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation inaccuracy for slide -> image conversion</span>")
+```
+
+This indicates a reliable transformation using the sample-specific 
+transformation matrix $A$ for conversion of slide to image coordinates.
+
+---
+
+2) Image $\rightarrow$ slide transformation
+
+Can the transformation be inverted to encode image $\rightarrow$ slide transformation?
+
+### Linear Models
+
+The Image $\rightarrow$ Slide transformation matrix $A^{-1}$ was primarily built using `solve(A)`.
+Additionally, an inverse transformation matrix $A^{-1}_{lm}$ was built using the linear model coefficients
+`A_x <- stats::coef(stats::lm(x ~ imageX + imageY, data = oligo))` and
+`A_y <- stats::coef(stats::lm(y ~ imageX + imageY, data = oligo))` with:
+
+$$
+A^{-1}_{lm} =
+\begin{bmatrix} 
+    A_x[imageX] & A_x[imageY] & A_x[intercept] \\ 
+    A_y[imageX] & A_y[imageY] & A_y[intercept] \\
+    0 & 0 & 1
+\end{bmatrix}
+$$
+
+All inverted 3x3-transformation matrices $A^{-1}$, calculated using `solve(A)` 
+were compared with the results of the linear model (`lm_identical`) and saved 
+as `image2slide_transformation_matrix_A_inv.csv`:
+
+```{r A-inv-image2slide, echo=FALSE}
+df_A_inv<- utils::read.csv(file.path(out_dir, "image2slide_transformation_matrix_A_inv.csv"))
+knitr::kable(df_A_inv, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation matrices for image -> slide conversion</span>")
+```
+
+
+### Maximum Errors
+
+Again, the maximum error related to the image to slide coordinate transformation
+$\text{image coordinates} \overset{A^{-1}}{\rightarrow} \text{slide coordinates}$ 
+across all samples is very small:
+
+```{r error-image2slide, echo=FALSE}
+df_A_inv <- utils::read.csv(file.path(out_dir, "image2slide_transformation_inaccuracy.csv"))
+knitr::kable(df_A_inv, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation inaccuracy for image -> slide conversion</span>")
+```
+
+Therefore, the sample-specific inverse transformation matrix $A^{-1}$, can
+be used for converting image to slide coordinates with very high precision.
+
+---
+
+### Summary
+
+Altogether, the transformation matrix $A$ and its inverse $solve(A)=A^{-1}$ reproduce 
+the JSON coordinates image and slide coordinates with very high numeric accuracy.
+Both transformation matrices can be constructed from the linear model coefficients 
+(`stats::coeff(stats::lm(model))`), independently.
+
+
+$$
+\text{slide coordinates} \overset{A}{\rightarrow} \text{image coordinates}\\
+\text{image coordinates} \overset{A^{-1}}{\rightarrow} \text{slide coordinates}
+$$
+
+
+---
+
+## Diemeter information
+
+Can the diameter information be used for inferring spatial information?
+
+For converting image $\rightarrow$ slide coordinates, the scaling factor is determined 
+by $sf_{A^{-1}} = det(A)= \sqrt{a^2 + b^2}$
+
+```{r slide-coordinate-df, echo=FALSE}
+diameter_df <- utils::read.csv(file.path(out_dir,  "diameter_df.csv"), row.names = 1)
+knitr::kable(diameter_df, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Spot Diameter</span>")
+```
+
+
+
+---
+
+## Slide Coordinates
+
+Do the slide coordinate distances dx and dy encode spatial distances in micrometer, and do
+the observed distances match any of the cases illustrated in [Reconstruction_models](https://Zockimonster.github.io/visiumSpatialSolutions/)? 
+
+```{r slide-coordinate-df, echo=FALSE}
+slide_df <- utils::read.csv(file.path(out_dir, "slide_coordinates.csv"), row.names = 1)
+knitr::kable(slide_df, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Slide Coordinates</span>")
+```
+
+For the observed slide coordinates (`x`,`y`) all fitted column increments (`dx`) equal 50 
+and all fitted row increments (`dy`) 87 for the 6.5mm array and are close to 86.5 for the 11mm array.
+
+Therefore, the column increments (`dx`) are consistent with the manufacturer's reported 100µm nearest neighbor distances $2dx = 100$,
+and all observed ratios for the fitted slide coordinate increments are consistent with the expected ratio of column 
+and row distances within a hexagonal grid as defined by case 3 in [Reconstruction_Models](https://Zockimonster.github.io/visiumSpatialSolutions/), with $(d_{diag} = 2d_{col} \wedge d_{diag} =\sqrt{dx^2 + dy^2}) \implies \frac{d_{col}}{d_{row}} = \frac{1}{\sqrt{3}} \approx 0.5773503$.
+
+---
+
+# Tissue position relationship
+
+The number of spots in the JSON and tissue position file as well as 
+the unique array coordinates match perfectly between both files:
+
+```{r n-spots, echo=FALSE}
+spots_df <- utils::read.csv(file.path(out_dir, "n_spots_combined.csv"))
+knitr::kable(spots_df, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Number of spots</span>")
+```
+
+
+---
+
+## Corresponding Tissue Positions
+
+To ensure the identical meaning of array coordinates across both files, we applied following check:
+
+Manual Selection of identical spots based on `detected_tissue_image`
+      $\downarrow$  
+Combination of returned JSON file and tissue positions   
+      $\downarrow$      
+Do selected tissue spots match between JSON and tissue positions file?
+
+
+Revealing perfect alignment of array coordinates for `spatial_Human_Ovarian_Cancer`:
+
+```{r tp-small-array, echo=FALSE}
+utils::read.csv(file.path(out_dir, "tissue_position_check_spatial_Human_Ovarian_Cancer.csv"))
+```
+
+
+as well as for `spatial_Human_Ovarian_Carcinoma`:
+        
+```{r tp-large-array, echo=FALSE}
+utils::read.csv(file.path(out_dir, paste0("tissue_position_check_spatial_Human_Ovarian_Carcinoma.csv")))
+```
+
+
+--- 
+
+## Relation between JSON and tissue position image coordinates
+
+
+1) JSON $\rightarrow$ TP image coordinate Transformation
+
+### Linear Models
+
+The JSON $\rightarrow$ TP image transformation matrix $B$ was built using the linear model coefficients
+`B_pxl_row <- stats::coef(stats::lm(pxl_row_in_fullres ~ imageX + imageY, data = tp_json))` and 
+`B_pxl_col <- stats::coef(stats::lm(pxl_col_in_fullres ~ imageX + imageY, data = tp_json))` with:
+
+$$
+B_{\ \text{pixel}_{JSON} \rightarrow \ \text{pixel}_{TP}} =
+\begin{bmatrix} 
+    B_{pxl\_row}[imageX] & B_{pxl\_row}[imageY] &  B_{pxl\_row}[intercept] \\ 
+     B_{pxl\_col}[imageX] & B_{pxl\_col}[imageY] & B_{pxl\_col}[intercept] \\
+    0 & 0 & 1
+\end{bmatrix} =
+\begin{bmatrix} 
+    a_{11} & a_{12} & b_1 \\ 
+    a_{21} & a_{22} & b_2 \\
+    0 & 0 & 1
+\end{bmatrix}
+
+\ \\ \ \\
+\text{pixel}_{JSON} \overset{B}{\rightarrow} \text{pixel}_{TP}
+$$
+
+All 3x3 transformation matrices $B$ for JSON $\rightarrow$ TP image coordinate 
+conversion derived by the linear models were saved to `JSON2TP_transformation_matrix_B.csv`:
+
+```{r B-JSON2TP, echo=FALSE}
+df_B <- utils::read.csv(file.path(out_dir, "JSON2TP_transformation_matrix_B.csv"))
+knitr::kable(df_B, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation matrices for JSON -> TP image conversion</span>")
+```
+
+ df_B
+                            Sample_Name Array_Size  row          col1          col2         col3
+1                  spatial_Glioblastoma       11mm row1   0.075995047 -16.758784115 49017.546288
+2                  spatial_Glioblastoma       11mm row2  16.758785381   0.075993333  9696.957221
+3                  spatial_Glioblastoma       11mm row3   0.000000000   0.000000000     1.000000
+4          spatial_Human_Ovarian_Cancer      6.5mm row1   0.002485077   6.889392405    -4.624027
+5          spatial_Human_Ovarian_Cancer      6.5mm row2   6.889395144  -0.002482931    -5.069893
+6          spatial_Human_Ovarian_Cancer      6.5mm row3   0.000000000   0.000000000     1.000000
+7       spatial_Human_Ovarian_Carcinoma       11mm row1  -0.201207646  16.938440506 -5449.799843
+8       spatial_Human_Ovarian_Carcinoma       11mm row2 -16.938440791  -0.201207658 38458.905706
+9       spatial_Human_Ovarian_Carcinoma       11mm row3   0.000000000   0.000000000     1.000000
+10                  spatial_Lung_Cancer       11mm row1   0.251682471 -16.910645246 38951.964921
+11                  spatial_Lung_Cancer       11mm row2  16.910644475   0.251682260 -4664.084691
+12                  spatial_Lung_Cancer       11mm row3   0.000000000   0.000000000     1.000000
+13 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm row1   0.127001375 -16.952528955 39713.897893
+14 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm row2  16.952525994   0.127001875  -186.319012
+15 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm row3   0.000000000   0.000000000     1.000000
+16                spatial_Skin_Melanoma      6.5mm row1  -0.026575963  14.117722945 -8989.300573
+17                spatial_Skin_Melanoma      6.5mm row2 -14.117712630  -0.026565339 24172.213430
+18                spatial_Skin_Melanoma      6.5mm row3   0.000000000   0.000000000     1.000000
+
+
+### Maximum Errors
+
+The maximum error related to the JSON to TP image coordinate transformation
+$\text{pixel}_{JSON} \overset{B}{\rightarrow} \text{pixel}_{TP}$ 
+across all samples is relatively small:
+
+```{r error-JSON2TP, echo=FALSE}
+df_B <- utils::read.csv(file.path(out_dir, "JSON2TP_transformation_inaccuracy.csv"))
+knitr::kable(df_B, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation inaccuracy for JSON -> TP image conversion</span>")
+```
+
+df_B
+                           Sample_Name Array_Size max_abs_pxl_row max_abs_pxl_col
+1                 spatial_Glioblastoma       11mm       0.5025436       0.5015630
+2         spatial_Human_Ovarian_Cancer      6.5mm       0.5003504       0.5019114
+3      spatial_Human_Ovarian_Carcinoma       11mm       0.5004045       0.5028164
+4                  spatial_Lung_Cancer       11mm       0.5021980       0.5004690
+5 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm       0.5038978       0.5012755
+6                spatial_Skin_Melanoma      6.5mm       0.4863538       0.5020253
+
+
+This indicates a sufficiently reliable transformation using the sample-specific 
+transformation matrix $B$ for conversion of JSON to TP image coordinates.
+
+---
+
+2) TP $\rightarrow$ JSON image coordinate Transformation
+
+If $det(B)= a_{11}a_{22} - a_{12}a_{21}  \neq 0$, an inverse matrix $solve(B)=B^{-1}$ exists, with:
+
+$$
+B^{-1}_{\ \text{pixel}_{TP} \rightarrow \ \text{pixel}_{JSON}} =
+\frac{1}{a_{11}a_{22} - a_{12}a_{21}}
+\begin{bmatrix} 
+    a_{22} & -a_{12} &  a_{12}b_2 - a_{22}b_1 \\ 
+    -a_{21} & a_{11} &  a_{21}b_1 -a_{11}b_2 \\
+    0 & 0 & a_{11}a_{22} - a_{12}a_{21}
+\end{bmatrix} | \ det(B) = a_{11}a_{22} - a_{12}a_{21} \neq 0
+
+\ \\ \ \\ \ \\
+\text{pixel}_{TP} \overset{B^{-1}}{\rightarrow} \text{pixel}_{JSON} \\
+$$
+
+### Linear Models
+
+The TP $\rightarrow$ JSON image transformation matrix $B^{-1}$ was primarily built using `solve(B)`.
+Additionally, an inverse transformation matrix $B^{-1}_{lm}$ was built using the linear model coefficients
+`B_imageX <- stats::coef(stats::lm(imageX ~ pxl_row_in_fullres + pxl_col_in_fullres, data = tp_json))` and 
+`B_imageY <- stats::coef(stats::lm(imageY ~ pxl_row_in_fullres + pxl_col_in_fullres, data = tp_json))` with:
+
+$$
+B^{-1}_{lm} =
+\begin{bmatrix} 
+    B_{imageX}[pxl\_row\_in\_fullres] & B_{imageX}[pxl\_col\_in\_fullres] &  B_{imageX}[intercept] \\ 
+    B_{imageY}[pxl\_row\_in\_fullres] & B_{imageY}[pxl\_col\_in\_fullres] & B_{imageY}[intercept] \\
+    0 & 0 & 1
+\end{bmatrix}
+$$
+
+
+All inverted 3x3-transformation matrices $B^{-1}$, calculated using `solve(B)` 
+were compared with the results of the linear model (`lm_identical`) and saved 
+as `TP2JSON_transformation_matrix_B_inv.csv`:
+
+```{r B-inv-TP2JSON, echo=FALSE}
+df_B_inv<- utils::read.csv(file.path(out_dir, "TP2JSON_transformation_matrix_B_inv.csv"))
+knitr::kable(df_B_inv, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation matrices for TP -> JSON image conversion</span>")
+```
+
+df_B_inv
+                            Sample_Name Array_Size                         lm_identical  row          col1          col2         col3
+1                  spatial_Glioblastoma       11mm                                 TRUE row1  2.705712e-04  5.966897e-02 -591.8701702
+2                  spatial_Glioblastoma       11mm                                 TRUE row2 -5.966897e-02  2.705773e-04 2922.2028728
+3                  spatial_Glioblastoma       11mm                                 TRUE row3  0.000000e+00  0.000000e+00    1.0000000
+4          spatial_Human_Ovarian_Cancer      6.5mm Mean relative difference: 1.3212e-05 row1  5.231216e-05  1.451506e-01    0.7361399
+5          spatial_Human_Ovarian_Cancer      6.5mm Mean relative difference: 1.3212e-05 row2  1.451507e-01 -5.235735e-05    0.6709151
+6          spatial_Human_Ovarian_Cancer      6.5mm Mean relative difference: 1.3212e-05 row3  0.000000e+00  0.000000e+00    1.0000000
+7       spatial_Human_Ovarian_Carcinoma       11mm                                 TRUE row1 -7.011911e-04 -5.902898e-02 2266.3686981
+8       spatial_Human_Ovarian_Carcinoma       11mm                                 TRUE row2  5.902898e-02 -7.011910e-04  348.6631814
+9       spatial_Human_Ovarian_Carcinoma       11mm                                 TRUE row3  0.000000e+00  0.000000e+00    1.0000000
+10                  spatial_Lung_Cancer       11mm                                 TRUE row1  8.799056e-04  5.912126e-02  241.4724938
+11                  spatial_Lung_Cancer       11mm                                 TRUE row2 -5.912125e-02  8.799063e-04 2306.9929472
+12                  spatial_Lung_Cancer       11mm                                 TRUE row3  0.000000e+00  0.000000e+00    1.0000000
+13 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm                                 TRUE row1  4.418927e-04  5.898495e-02   -6.5592649
+14 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm                                 TRUE row2 -5.898494e-02  4.418910e-04 2342.6041602
+15 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm                                 TRUE row3  0.000000e+00  0.000000e+00    1.0000000
+16                spatial_Skin_Melanoma      6.5mm                                 TRUE row1 -1.332861e-04 -7.083275e-02 1710.9862851
+17                spatial_Skin_Melanoma      6.5mm                                 TRUE row2  7.083270e-02 -1.333394e-04  639.9595541
+18                spatial_Skin_Melanoma      6.5mm                                 TRUE row3  0.000000e+00  0.000000e+00    1.0000000
+
+
+### Maximum Errors
+
+The maximum error related to the TP to JSON image coordinate transformation
+$\text{pixel}_{TP} \overset{B^{-1}}{\rightarrow} \text{pixel}_{JSON}$ 
+across all samples is very small:
+
+```{r error-TP2JSON, echo=FALSE}
+df_B_inv <- utils::read.csv(file.path(out_dir, "TP2JSON_transformation_inaccuracy.csv"))
+knitr::kable(df_B_inv, digits = 9, caption = "<span style='font-size: 22px; font-weight: bold;'>Transformation inaccuracy for TP -> JSON image conversion</span>")
+```
+
+df_B_inv
+                           Sample_Name Array_Size max_abs_imageX max_abs_imageY
+1                 spatial_Glioblastoma       11mm     0.03000334     0.03008183
+2         spatial_Human_Ovarian_Cancer      6.5mm     0.07283828     0.07263399
+3      spatial_Human_Ovarian_Carcinoma       11mm     0.02982102     0.02984054
+4                  spatial_Lung_Cancer       11mm     0.02992354     0.02993835
+5 spatial_Lung_Squamous_Cell_Carcinoma      6.5mm     0.02957716     0.02975440
+6                spatial_Skin_Melanoma      6.5mm     0.03559712     0.03447388
+
+Therefore, the sample-specific inverse transformation matrix $B^{-1}$, can
+be used for converting TP to JSON image coordinates with very high precision.
+
+---
+
+### Summary
+
+Altogether, the transformation matrix $B$ and its inverse $solve(B)=B^{-1}$ reproduce 
+the JSON and TP image coordinates with high numeric accuracy,
+The independently fitted reverse linear transformation (`stats::coeff(stats::lm(model))`)
+produced nearly identical results across all investigated datasets.
+
+All JSON and tissue positions can be converted using affine transformation, though
+the exact conversion appears to be sample-specific, including all kinds of affine 
+transformation procedures.
+
+
+## Affine Transformation procedures
+
+| Transformation                  | Linear model values               |
+| :------------------------------ | :---------------------------------|
+| Translation                     | Intercept differs                 |
+| Reflection                      | Negative Slope                    |
+| Scaling / Cropping / Resizing   | Absolute Slope != 1               |
+| Cross-axis contribution         | Axis-specific transformation      |
+
+
+---
+
+# Reproducibility
+
+## Script availability
+
+The calculations, tables and figures shown on this page are generated from:
+
+- [`code_spatial_alignment.R`](https://Zockimonster.github.io/visiumSpatialSolutions/demo_spatial/code_spatial_alignment.R)
+- [`functions_spatial_alignment.R`](https://Zockimonster.github.io/visiumSpatialSolutions/demo_spatial/functions_spatial_alignment.R)
+
+
+Specific results comprising all related models and measurements are also available in:
+
+- [results](https://Zockimonster.github.io/visiumSpatialSolutions/demo_spatial/results/)
+
+## Session Info
+
+```{r}
+sessionInfo()
+```
+
+
+

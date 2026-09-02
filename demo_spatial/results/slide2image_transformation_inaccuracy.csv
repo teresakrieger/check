@@ -1,0 +1,7 @@
+"Sample_Name","Array_Size","max_abs_imageX","max_abs_imageY"
+"spatial_Glioblastoma","11mm","0.000230965453738463","0.00023894941114122"
+"spatial_Human_Ovarian_Cancer","6.5mm","0.000111753498231337","0.000119179464491026"
+"spatial_Human_Ovarian_Carcinoma","11mm","0.000235027401686239","0.000239214627526962"
+"spatial_Lung_Cancer","11mm","0.000237851039400994","0.000238922082644422"
+"spatial_Lung_Squamous_Cell_Carcinoma","6.5mm","0.000115620484621104","0.000228853662065376"
+"spatial_Skin_Melanoma","6.5mm","0.000119332508802472","0.00021677804625142"

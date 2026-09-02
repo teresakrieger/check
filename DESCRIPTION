@@ -1,0 +1,48 @@
+Package: visiumSpatialSolutions
+Title: Tools for Spatial Analysis of Visium Spot-Based Arrays
+Version: 0.1.0
+Authors@R: 
+    person("Eli", "Spies", , "eli.spies@charite.de", role = c("aut", "cre"),
+           comment = c(ORCID = "0009-0001-4071-4476"))
+Description: This package provides helper functions for spatial analysis
+    of Visium spot-based arrays, including validation of detected fiducial
+    markers, conversion between array and pixel spot positions into
+    spatial dimensions, spatially resolved visualization, and interactive
+    spot selection within the spatially resolved image.
+License: MIT + file LICENSE
+URL: https://github.com/Zockimonster/visiumSpatialSolutions
+BugReports: https://github.com/Zockimonster/visiumSpatialSolutions/issues
+Depends: 
+    R (>= 4.2.0)
+Imports: 
+    base64enc,
+    dplyr,
+    grDevices,
+    jpeg,
+    jsonlite,
+    Matrix,
+    plotly,
+    png,
+    R.utils,
+    readr,
+    rlang,
+    S4Vectors,
+    sf,
+    shiny,
+    SpatialExperiment,
+    SpatialFeatureExperiment,
+    stats,
+    terra,
+    tools,
+    utils
+Suggests: 
+    ggpubr,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+VignetteBuilder: 
+    knitr
+Config/testthat/edition: 3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.0

@@ -1,0 +1,52 @@
+<button
+  id="theme-toggle"
+  class="theme-toggle"
+  type="button"
+  aria-label="Switch color theme"
+  title="Switch light/dark mode">
+  ◐
+</button>
+
+<script>
+(function () {
+  const storageKey = "visium-theme";
+  const root = document.documentElement;
+  const button = document.getElementById("theme-toggle");
+
+  function preferredTheme() {
+    const saved = localStorage.getItem(storageKey);
+    if (saved === "light" || saved === "dark") return saved;
+
+    return window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+  }
+
+  function applyTheme(theme) {
+    root.setAttribute("data-theme", theme);
+    button.setAttribute(
+      "aria-label",
+      theme === "dark"
+        ? "Switch to light mode"
+        : "Switch to dark mode"
+    );
+    button.title =
+      theme === "dark"
+        ? "Switch to light mode"
+        : "Switch to dark mode";
+  }
+
+  applyTheme(preferredTheme());
+
+  button.addEventListener("click", function () {
+    const next =
+      root.getAttribute("data-theme") === "dark"
+        ? "light"
+        : "dark";
+
+    localStorage.setItem(storageKey, next);
+    applyTheme(next);
+  });
+})();
+</script>

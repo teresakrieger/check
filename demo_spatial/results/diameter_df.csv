@@ -1,0 +1,7 @@
+"Sample_Name","Array_Size","diameter_oligo","diameter_fiducials","d_oligo/d_fiducials","d_fiducials/det(A)"
+"spatial_Glioblastoma","11mm","13.077573","22.885754","0.571428540217639","1.08833049424564"
+"spatial_Human_Ovarian_Cancer","6.5mm","13.621956","22.004698","0.619047623375699","1.04643193534572"
+"spatial_Human_Ovarian_Carcinoma","11mm","12.934283","22.634996","0.571428552494553","1.07640571439892"
+"spatial_Lung_Cancer","11mm","12.960636","22.681114","0.571428546234546","1.0785988527912"
+"spatial_Lung_Squamous_Cell_Carcinoma","6.5mm","15.107846","22.66177","0.666666637248547","1.07767895017053"
+"spatial_Skin_Melanoma","6.5mm","15.264965","22.897448","0.666666652109004","1.08888660163016"

@@ -1,0 +1,7 @@
+"Sample_Name","Array_Size","n_spots_tp","n_spots_json","n_spots_combined"
+"spatial_Glioblastoma","11mm","14336","14336","14336"
+"spatial_Human_Ovarian_Cancer","6.5mm","4992","4992","4992"
+"spatial_Human_Ovarian_Carcinoma","11mm","14336","14336","14336"
+"spatial_Lung_Cancer","11mm","14336","14336","14336"
+"spatial_Lung_Squamous_Cell_Carcinoma","6.5mm","4992","4992","4992"
+"spatial_Skin_Melanoma","6.5mm","4992","4992","4992"

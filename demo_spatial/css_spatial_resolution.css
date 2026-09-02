@@ -1,0 +1,274 @@
+/* Main document width */
+.main-container {
+  max-width: 1500px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Enable dark mode */
+:root {
+  --page-bg: #ffffff;
+  --text-color: #222222;
+  --muted-text: #5f6368;
+  --heading-color: #202124;
+
+  --link-color: #337ab7;
+  --link-hover: #23527c;
+
+  --border-color: #e4e7eb;
+  --soft-bg: #f6f8fa;
+  --note-bg: #f7f7f7;
+  --note-border: #777777;
+
+  --table-stripe: #f8f9fa;
+  --code-bg: #f5f5f5;
+
+  --toc-bg: #f8f9fa;
+  --toc-active-bg: #cfd4d8;
+  --toc-text-color: #5f6368;
+  --toc-active-text: #202124;
+  --toc-border: #ced0d3;
+}
+
+html[data-theme="dark"] {
+  --page-bg: #151719;
+  --text-color: #e6e8eb;
+  --muted-text: #adb5bd;
+  --heading-color: #f1f3f5;
+
+  --link-color: #76b7ff;
+  --link-hover: #acd4ff;
+
+  --border-color: #3a3f44;
+  --soft-bg: #202326;
+  --note-bg: #202326;
+  --note-border: #8d959d;
+
+  --table-stripe: #1d2023;
+  --code-bg: #24282c;
+
+  --toc-bg: #1a1c1f;
+  --toc-text-color: #aacdf3;
+  --toc-active-text: #ffffff;
+  --toc-active-bg: #2d3033;
+  --toc-border: #3a3f44;
+}
+
+html,
+body {
+  background-color: var(--page-bg);
+  color: var(--text-color);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--heading-color);
+}
+
+a {
+  color: var(--link-color);
+}
+
+a:hover,
+a:focus {
+  color: var(--link-hover);
+}
+
+hr {
+  border-color: var(--border-color);
+}
+
+pre,
+code {
+  background-color: var(--code-bg);
+}
+
+table,
+.table {
+  color: var(--text-color);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: var(--table-stripe);
+}
+
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2000;
+
+  width: 2.6rem;
+  height: 2.6rem;
+
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+
+  background: var(--soft-bg);
+  color: var(--text-color);
+
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.05);
+}
+
+/* Add spacing between sections */
+h1 {
+  margin-top: 3.2rem;
+  margin-bottom: 1.2rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+h2 {
+  margin-top: 2.7rem;
+  margin-bottom: 1rem;
+}
+
+h3 {
+  margin-top: 2.1rem;
+  margin-bottom: 0.8rem;
+}
+
+h4, h5 {
+  margin-top: 1.6rem;
+}
+
+/* Paragraph readability */
+p {
+  line-height: 1.65;
+  margin-bottom: 1.1rem;
+}
+
+/* Lists */
+li {
+  margin-bottom: 0.35rem;
+}
+
+/* Equations: Add space around dense derivations */
+.math.display {
+  margin-top: 1.5rem;
+  margin-bottom: 1.7rem;
+  overflow-x: auto;
+}
+
+/* Coordinate / interpretation notes */
+.note-box {
+  background: var(--note-bg);
+  margin: 1.5rem 0 2rem 0;
+  padding: 1rem 1.25rem;
+  border-left: 4px solid var(--note-border);
+  border-radius: 4px;
+  line-height: 1.6;
+}
+
+/* Figures */
+.figure {
+  margin-top: 2rem;
+  margin-bottom: 2.5rem;
+  text-align: center;
+}
+
+.figure img {
+  max-width: 120%;
+  height: auto;
+}
+
+/* Tables */
+table {
+  margin-top: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.table {
+  width: 100%;
+}
+
+/* adjust caption styles */
+.caption,
+p.caption {
+  margin-top: 0.7rem;
+  font-size: 1.5rem;
+}
+
+/* Adjust caption styles for tables */
+caption,
+.table caption {
+  color: var(--heading-color);
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 0.75rem 0;
+}
+
+/* TOC container */
+#TOC,
+.tocify {
+  background-color: var(--toc-bg);
+  color: var(--toc-text-color);
+  border: 1px solid var(--toc-border);
+  border-radius: 6px;
+  padding: 0.6rem;
+  font-size: 1.5rem;
+  width: 90%;
+  max-width: 300px;
+}
+
+/* Normal TOC links */
+#TOC a,
+.tocify a {
+  color: var(--toc-text-color) !important;
+  text-decoration: none;
+}
+
+/* Currently active section */
+#TOC .active {
+  background-color: var(--toc-active-bg) !important;
+  border-radius: 4px;
+}
+
+/* Active section text/link */
+#TOC .active,
+#TOC .active > a,
+#TOC .active a,
+.tocify .active,
+.tocify .active > a,
+.tocify .active a {
+  color: var(--toc-active-text) !important;
+}
+
+/* Prevent Bootstrap/tocify from reintroducing a white background */
+.tocify-item,
+.tocify-header,
+.tocify-subheader {
+  background-color: transparent !important;
+}
+
+/* Add some space between entries */
+.tocify-item {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  line-height: 1.35;
+}
+/* Add some space between toc and main */
+@media (min-width: 768px) {
+  .col-sm-9 {
+    padding-left: 3rem;
+  }
+}
+/* Improve small-screen behavior */
+@media (max-width: 900px) {
+  .main-container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}

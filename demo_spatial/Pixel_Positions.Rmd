@@ -1,0 +1,532 @@
+---
+title: "Pixel_Positions"
+author: "E.S."
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Pixel positions
+
+$$
+\text{Pixel positions in a perfectly linear image grid H}_{\text{LG}} : \\
+x_{pixel} = \beta_{0x} + \beta_{xx}*x_{array} \\
+H_{LG} \models \beta_{xy} = 0 \\
+\Rightarrow  \Delta x_{pixel}=0 \ \mid \ x_{array} = i \\
+
+y_{pixel} = \beta_{0y} + \beta_{yy}*y_{array} \\
+H_{LG} \models \beta_{yx} = 0 \\
+\Rightarrow \Delta y_{pixel}=0 \ \mid \ y_{array} = j \\
+
+\text{Observed pixel-grid aspect ratio:} \\
+R_{pixel} = \frac{\tilde{d}_{x, pixel}}{\tilde{d}_{y, pixel}}
+$$
+
+`pixel_deviations()`
+      $\downarrow$ 
+Residual image-coordinate deviation in tissue
+positions after accounting for affine transformation.
+
+
+```{r pixel-deviations}
+pixel_deviations <- list()
+for (sample_id in names(json_check)){
+  json_data <- json_check[[sample_id]]$json_file
+  pixel_deviations[[sample_id]] <- pixel_deviations_json(json_file = json_data)}
+
+# dev_df <- data.frame(matrix(nrow=length(slide_IDs), ncol=5), row.names = names(slide_IDs))
+# colnames(slide_df) <- c("Sample_Name", "Array_Size","dx", "dy", "xy_ratio")
+# for (row in names(slide_IDs)){
+#   slide_df[row,] <- c(row, array_size[[row]], slide_coordinates[[row]]$oligo[c("dx", "dy", "xy_ratio")])}
+# 
+# utils::write.csv(slide_df, file.path(out_dir, "slide_coordinates.csv"), row.names = FALSE)
+```
+
+```{r}
+dev_df <- pixel_deviations$spatial_Glioblastoma$residual_df
+
+sample_name <- "spatial_Glioblastoma"
+par(mfrow=c(2,2), oma=c(0,0,2,0))
+
+plot(
+    dev_df$imageX,
+    dev_df$dev_imageX_array,
+    xlab = "imageX",
+    ylab = "Array-model residual",
+    main = "Array: imageX residuals"
+)
+graphics::abline(h = 0, lty = 2)
+
+plot(
+    dev_df$imageY,
+    dev_df$dev_imageY_array,
+    xlab = "imageY",
+    ylab = "Array-model residual",
+    main = "Array: imageY residuals"
+)
+graphics::abline(h = 0, lty = 2)
+
+
+plot(
+    dev_df$imageX,
+    dev_df$dev_imageX_slide,
+    xlab = "imageX",
+    ylab = "Slide-model residual",
+    main = "Slide: imageX residuals"
+)
+graphics::abline(h = 0, lty = 2)
+
+plot(
+    dev_df$imageY,
+    dev_df$dev_imageY_slide,
+    xlab = "imageY",
+    ylab = "Slide-model residual",
+    main = "Slide: imageY residuals"
+)
+graphics::abline(h = 0, lty = 2)
+  
+graphics::mtext(paste0(sample_name, ": Image Residuals for Array and Slide coordinates"),
+        outer = TRUE, side = 3, line = -0.5, cex = 1.2)
+getwd()
+
+```
+
+
+
+```{r}
+
+#--------------------------------------------------------------#
+# JSON-TP pixel Validation
+#--------------------------------------------------------------#
+
+visium_ids <- list("Visium_6500"= "tissue_positions_list.csv",
+                   "Visium_11000"="tissue_positions.csv")
+
+tp_list <- list()
+json_validation <- list()
+summary_list <- list()
+for (visium_id in seq_along(visium_ids)){
+  visium_sample <- names(visium_ids)[[visium_id]]
+  tp_file <- visium_ids[[visium_id]]
+  # load tp & scalefactors
+  tp <- load_tp(visium_dir=visium_dir, visium_sample=visium_sample, tp_file_name = tp_file)
+  sf <-  jsonlite::fromJSON(file.path(visium_dir, visium_sample, "outs", "spatial", "scalefactors_json.json"))
+  # convert full resolution pixels into image resolution pixels
+  tp$hires_imageX <- tp$pxl_col_in_fullres*sf$tissue_hires_scalef
+  tp$hires_imageY <- tp$pxl_row_in_fullres*sf$tissue_hires_scalef
+  tp$lowres_imageX <- tp$pxl_col_in_fullres*sf$tissue_lowres_scalef
+  tp$lowres_imageY <- tp$pxl_row_in_fullres*sf$tissue_lowres_scalef
+  # combine with json information
+  json_file <- json_list[[visium_sample]]
+  tp <- merge(tp, json_file$oligo, by.x = c("array_row", "array_col"), by.y= c("row", "col"))
+  
+  # fit linear model
+  fit_x <- stats::lm(imageX ~ pxl_col_in_fullres, data=tp)
+  fit_y <- stats::lm(imageY ~ pxl_row_in_fullres, data = tp)
+  fit_xy <- stats::lm(imageX ~ pxl_col_in_fullres + pxl_row_in_fullres, data = tp)
+  fit_yx <- stats::lm(imageY ~ pxl_col_in_fullres + pxl_row_in_fullres, data = tp)
+  
+  # build transformation matrix B
+  cx <- coef(fit_xy)
+  cy <- coef(fit_yx)
+  
+  B <- matrix(c(cx["pxl_col_in_fullres"], cx["pxl_row_in_fullres"], cx["(Intercept)"],
+                cy["pxl_col_in_fullres"], cy["pxl_row_in_fullres"], cy["(Intercept)"],
+                0, 0, 1), nrow = 3, byrow = TRUE)
+  
+  # add residuals to tp
+  tp$residuals_x <- residuals(fit_x)
+  tp$residuals_y <- residuals(fit_y)
+  tp$residual_distance <-  sqrt((tp$imageX - predict(fit_xy))^2 + (tp$imageY - predict(fit_yx))^2)
+  tp_list[[visium_sample]] <- tp
+  
+  json_validation[[visium_sample]] <- list("x"= list(lm = fit_x,
+                                                     lm_xy = fit_xy,
+                                                     diff_hires = summary(tp$hires_imageX - tp$imageX),
+                                                     diff_lowres = summary(tp$lowres_imageX - tp$imageX),
+                                                     abs_diff_hires = summary(abs(tp$hires_imageX - tp$imageX)),
+                                                     abs_diff_lowres = summary(abs(tp$lowres_imageX - tp$imageX)),
+                                                     cor_hires = cor(tp$hires_imageX, tp$imageX),
+                                                     cor_lowres = cor(tp$lowres_imageX, tp$imageX)),
+                                           "y"= list(lm = fit_y,
+                                                     lm_xy = fit_yx,
+                                                     diff_hires = summary(tp$hires_imageY - tp$imageY),
+                                                     diff_lowres = summary(tp$lowres_imageY - tp$imageY),
+                                                     abs_diff_hires = summary(abs(tp$hires_imageY - tp$imageY)),
+                                                     abs_diff_lowres = summary(abs(tp$lowres_imageY - tp$imageY)),
+                                                     cor_hires = cor(tp$hires_imageY, tp$imageY),
+                                                     cor_lowres = cor(tp$lowres_imageY, tp$imageY)),
+                                           "B"= B)}
+
+saveRDS(json_validation, file.path(tm_dir, "json_tp_transformation.rds"))
+
+
+
+# residual plots for both samples
+grDevices::png(filename = file.path(figures_dir, "residual_plots.png"), width=15, height=7, units = "cm", res=600)
+par(mfrow=c(2,1))
+
+visium_samples <- c("Visium_6500", "Visium_11000")
+for (visium_sample in visium_samples){
+  tp <- tp_list[[visium_sample]]
+  fit_x_raw <- json_validation[[visium_sample]]$x$lm_xy
+  fit_y_raw <- json_validation[[visium_sample]]$y$lm_xy
+  
+  # create residual summary df
+  df <- data.frame(matrix(nrow=3, ncol=length(summary(1))), row.names = c("residuals_x_raw", "residuals_y_raw", "residual_distance"))
+  colnames(df) <- c("min", "median", "mean", "sd", "max")
+  df[1,] <- summary(residuals(fit_x_raw))
+  df[2,] <- summary(residuals(fit_y_raw))
+  df[3,] <- summary(tp$residual_distance)
+  
+  # create plot
+  enlargement_factor <- 20
+  
+  plot(tp$imageX, tp$imageY, asp = 1, pch = 16, cex = 0.3)
+  
+  graphics::segments(tp$imageX,
+                     tp$imageY,
+                     tp$imageX + enlargement_factor * (tp$imageX - predict(fit_x_raw)),
+                     tp$imageY + enlargement_factor * (tp$imageY - predict(fit_y_raw)), col = "blue")
+  
+  # add residual summaries as tables
+  graphics::frame()
+  vps <- gridBase::baseViewports()
+  grid::pushViewport(vps$inner, vps$figure, vps$plot)
+  grob <-  gridExtra::tableGrob(df)  
+  grid::grid.draw(grob)
+  
+  grid::popViewport(3)}
+
+grDevices::dev.off()
+
+```
+### Residual Plot
+
+```{r residual plot image, echo=FALSE, fig.align="center"}
+knitr::include_graphics(file.path(figures_dir, "residual_plots.png"))
+```
+
+
+########################################################################################
+########################################################################################
+
+#--------------------------------------------------------------#
+# visium sample data
+#--------------------------------------------------------------#
+
+# define directories
+pkg_dir <- "C:/Users/Eli/Desktop/Patho/temp_git/visiumSpatialSolutions/"
+base_dir <- getwd()
+# dir, where the data had been downloaded
+visium_dir <- file.path(pkg_dir,"vignettes", "data")
+# dir, where the figure should be saved
+figures_dir <- file.path(base_dir, "figures")
+# dir, where results should be saved, includes a folder
+# with the manual alignment files for each sample
+tm_dir <- file.path(base_dir,  "transformation_models")
+
+visium_dir <- file.path("D:", "visium_folders")
+
+slide_ids<- c(
+  "V12F15-088-A1",
+  "V12F15-088-B1",
+  "V12F15-088-C1",
+  "V12F15-088-D1",
+  "V12F15-002-A1",
+  "V12F15-002-B1",
+  "V12F15-002-C1",
+  "V12F15-002-D1",
+  "V12F15-089-A1",
+  "V12F15-089-B1",
+  "V12F15-089-C1",
+  "V12F15-089-D1",
+  "V12F15-090-A1",
+  "V12F15-090-B1",
+  "V12F15-090-C1",
+  "V12F15-090-D1",
+  "V11F16-343-A1",
+  "V11F16-343-B1",
+  "V11F16-343-C1",
+  "V11F16-343-D1")
+
+names(slide_ids) <- paste0("c", 1:20, "_M")
+
+for (visium_sample in names(slide_ids)){
+  slide_id <- slide_ids[[visium_sample]]
+  json_file <- jsonlite::fromJSON(file.path(visium_dir, visium_sample, "M_files", paste0(slide_id, ".json")))
+  tp <- utils::read.csv(file.path(visium_dir, visium_sample, "outs", "spatial", "tissue_positions.csv"))
+}
+
+
+#--------------------------------------------------------------#
+# Internal JSON Validation
+#--------------------------------------------------------------#
+
+slide_ids <-list("Visium_FFPE_Human_Ovarian_Cancer" = "V10L13-020-D1",
+                 "CytAssist_11mm_FFPE_Human_Ovarian_Carcinoma" = "V52Y09-003-B1")
+
+json_transformation <- list()
+json_list <- list()
+for (slide in seq_along(slide_ids)){
+  visium_sample <- names(slide_ids)[slide]
+  slide_id <- slide_ids[[slide]]
+  json_file <- jsonlite::fromJSON(file.path(tm_dir, visium_sample, paste0(slide_id, ".json")))
+  json_list[[visium_sample]] <- json_file
+  A <- json_file$transform
+  oligo <- json_file$oligo
+  fid <- json_file$fiducial
+  
+  # line stats
+  fit_x <- stats::lm(imageX ~ x + y, data = oligo)
+  fit_y <- stats::lm(imageY ~ x + y, data = oligo)
+  
+  line_stats <- list(
+    "slideX_col" = oligo %>%
+      dplyr::group_by(col) %>%
+      dplyr::reframe(n = dplyr::n(),
+                     mean = mean(x),
+                     median = median(x),
+                     sd = stats::sd(x),
+                     mad = stats::mad(x),
+                     min = min(x),
+                     max = max(x),
+                     diff_range = diff(range(x))),
+    "slideY_row" = oligo %>%
+      dplyr::group_by(row) %>%
+      dplyr::reframe(n = dplyr::n(),
+                     mean = mean(y),
+                     median = median(y),
+                     sd = stats::sd(y),
+                     mad = stats::mad(y),
+                     min = min(y),
+                     max = max(y),
+                     diff_range = diff(range(y))),
+    "imageX_row" = oligo %>%
+      dplyr::group_by(row) %>%
+      dplyr::reframe(n = dplyr::n(),
+                     mean = mean(imageX),
+                     median = median(imageX),
+                     sd = stats::sd(imageX),
+                     mad = stats::mad(imageX),
+                     min = min(imageX),
+                     max = max(imageX),
+                     diff_range = diff(range(imageX))),
+    "imageY_col" =oligo %>%
+      dplyr::group_by(col) %>%
+      dplyr::reframe(n = dplyr::n(),
+                     mean = mean(imageY),
+                     median = median(imageY),
+                     sd = stats::sd(imageY),
+                     mad = stats::mad(imageY),
+                     min = min(imageY),
+                     max = max(imageY),
+                     diff_range = diff(range(imageY))),
+    "lm_x"=fit_x,
+    "residual_misalignment_x"=unname(coef(fit_x)["y"]),
+    "dx_image"=unname(coef(fit_x)["x"]),
+    "lm_y"=fit_y,
+    "residual_misalignment_y"=unname(coef(fit_y)["x"]),
+    "dy_image"=unname(coef(fit_y)["y"]),
+    "dx:dy_image_ratio"= abs(unname(coef(fit_x)["x"])/unname(coef(fit_y)["y"])))
+  
+  # Distance between adjacent lines
+  median_diff <- list()
+  line_ids <- grep("_col|row", names(line_stats), value = TRUE)
+  for (line_id in line_ids){
+    median_diff[[line_id]] <- diff(line_stats[[line_id]]$median)}
+  
+  # add to line stats
+  line_stats[["median_diff"]] <- median_diff
+  
+  # Observed grid-aspect ratio
+  line_stats[["median_grid_ratio"]]<- list("slide"= median(abs(median_diff$slideX_col))/median(abs(median_diff$slideY_row)),
+                                           "image" = median(abs(median_diff$imageY_col))/median(abs(median_diff$imageX_row)))
+  
+  #--------------------------------------------------------------#
+  
+  # spatial models
+  oligo_x <- stats::lm(x ~ col, data=oligo)
+  oligo_y <- stats::lm(y ~ row, data = oligo)
+  fid_x <- stats::lm(x ~ col, data=fid)
+  fid_y <- stats::lm(y ~ row, data = fid)
+  
+  spatial_stats <- list("x"= list(oligo = oligo_x,
+                                  dx_slide = unname(coef(oligo_x)["col"]),
+                                  fiducials = fid_x,
+                                  dx_fiducials = unname(coef(fid_x)["col"])),
+                        "y"= list(oligo = oligo_y,
+                                  dy_slide = unname(coef(oligo_y)["row"]),
+                                  fiducials = fid_y,
+                                  dy_fiducials = unname(coef(fid_y)["row"])))
+  
+  #--------------------------------------------------------------#
+  
+  # neighbor distances
+  axis_neighbors <- dplyr::inner_join(
+    oligo, oligo %>% dplyr::transmute(row, col = col - 2L, x_2 = x, y_2 = y), by = c("row", "col"))
+  
+  axis_neighbors$distance <- sqrt(
+    (axis_neighbors$x - axis_neighbors$x_2)^2 +
+      (axis_neighbors$y - axis_neighbors$y_2)^2)
+  
+  diag_neighbors <- dplyr::inner_join(
+    oligo, oligo %>% dplyr::transmute(row = row - 1L, col = col - 1L, x_2 = x, y_2 = y), by = c("row", "col"))
+  
+  diag_neighbors$distance <- sqrt(
+    (diag_neighbors$x - diag_neighbors$x_2)^2 +
+      (diag_neighbors$y - diag_neighbors$y_2)^2)
+  
+  neighbor_stats <- list("axis_neighbors"= axis_neighbors,
+                         "diag_neighbors"= diag_neighbors)
+  
+  #--------------------------------------------------------------#
+  
+  # Forward transformation
+  # Convert layout coordinates to homogeneous coordinates
+  v_oligo <- cbind(oligo[,c("x", "y")], "z"=1)
+  v_oligo$pxl_x <- rep(NA_real_, nrow(v_oligo))
+  v_oligo$pxl_y <-  rep(NA_real_, nrow(v_oligo))
+  
+  v_fid <- cbind(fid[,c("x", "y")], "z"=1)
+  v_fid$pxl_x <- rep(NA_real_, nrow(v_fid))
+  v_fid$pxl_y <-  rep(NA_real_, nrow(v_fid))
+  
+  # Transformation of spatial coordinates into pixel coordinates
+  # Perform matrix-vector multiplication & re-combine with original output
+  for (row in 1:nrow(v_oligo)){
+    v <- unlist(unname(v_oligo[row,c("x", "y", "z")]))
+    tv <- A %*% v
+    v_oligo[row, c("pxl_x", "pxl_y")] <- tv[1:2]}
+  v_oligo <- merge(oligo, v_oligo, by=c("x", "y"))
+  
+  for (row in 1:nrow(v_fid)){
+    v <- unlist(unname(v_fid[row,c("x", "y", "z")]))
+    tv <- A %*% v
+    v_fid[row, c("pxl_x", "pxl_y")] <- tv[1:2]}
+  v_fid <- merge(fid, v_fid, by=c("x", "y"))
+  
+  # save to list
+  S2I <- list("A"=A, 
+              "oligo"= v_oligo,
+              "fiducial"=v_fid)
+  
+  #--------------------------------------------------------------#
+  
+  # Backward transformation
+  # calculate inverse transformation matrix
+  A_inv <- solve(A)
+  
+  # Convert pixel coordinates to homogeneous coordinates
+  v_oligo <- cbind(oligo[,c("imageX", "imageY")], "imageZ"=1)
+  v_oligo$slide_x <- rep(NA_real_, nrow(v_oligo))
+  v_oligo$slide_y <-  rep(NA_real_, nrow(v_oligo))
+  
+  v_fid <- cbind(fid[,c("imageX", "imageY")], "imageZ"=1)
+  v_fid$slide_x <- rep(NA_real_, nrow(v_fid))
+  v_fid$slide_y <-  rep(NA_real_, nrow(v_fid))
+  
+  # Transformation of spatial coordinates into pixel coordinates
+  # Perform matrix-vector multiplication
+  for (row in 1:nrow(v_oligo)){
+    v <- unlist(unname(v_oligo[row,c("imageX", "imageY", "imageZ")]))
+    tv <- A_inv %*% v
+    v_oligo[row, c("slide_x", "slide_y")] <- tv[1:2]}
+  v_oligo <- merge(oligo, v_oligo, by=c("imageX", "imageY"))
+  
+  for (row in 1:nrow(v_fid)){
+    v <- unlist(unname(v_fid[row,c("imageX", "imageY", "imageZ")]))
+    tv <- A_inv %*% v
+    v_fid[row, c("slide_x", "slide_y")] <- tv[1:2]}
+  v_fid <- merge(fid, v_fid, by=c("imageX", "imageY"))
+  
+  # save to list
+  I2S <- list("A_inv"=A_inv,
+              "oligo"= v_oligo,
+              "fiducial"=v_fid)
+  
+  #--------------------------------------------------------------#
+  
+  # save data
+  json_transformation[[visium_sample]] <- list(slide2image = S2I,
+                                               image2slide = I2S, 
+                                               line_stats = line_stats,
+                                               spatial_stats = spatial_stats,
+                                               neighbor_stats = neighbor_stats)}
+
+saveRDS(json_transformation, file.path(tm_dir, "json_internal_transformation.rds"))
+
+
+#--------------------------------------------------------------#
+# JSON-TP Validation
+#--------------------------------------------------------------#
+
+visium_ids <- list("Visium_6500"= "tissue_positions_list.csv",
+                   "Visium_11000"="tissue_positions.csv")
+
+tp_list <- list()
+json_validation <- list()
+summary_list <- list()
+for (visium_id in seq_along(visium_ids)){
+  visium_sample <- names(visium_ids)[[visium_id]]
+  tp_file <- visium_ids[[visium_id]]
+  # load tp & scalefactors
+  tp <- load_tp(visium_dir=visium_dir, visium_sample=visium_sample, tp_file_name = tp_file)
+  sf <-  jsonlite::fromJSON(file.path(visium_dir, visium_sample, "outs", "spatial", "scalefactors_json.json"))
+  # convert full resolution pixels into image resolution pixels
+  tp$hires_imageX <- tp$pxl_col_in_fullres*sf$tissue_hires_scalef
+  tp$hires_imageY <- tp$pxl_row_in_fullres*sf$tissue_hires_scalef
+  tp$lowres_imageX <- tp$pxl_col_in_fullres*sf$tissue_lowres_scalef
+  tp$lowres_imageY <- tp$pxl_row_in_fullres*sf$tissue_lowres_scalef
+  # combine with json information
+  json_file <- json_list[[visium_sample]]
+  tp <- merge(tp, json_file$oligo, by.x = c("array_row", "array_col"), by.y= c("row", "col"))
+  
+  # fit linear model
+  fit_x <- stats::lm(imageX ~ pxl_col_in_fullres, data=tp)
+  fit_y <- stats::lm(imageY ~ pxl_row_in_fullres, data = tp)
+  fit_xy <- stats::lm(imageX ~ pxl_col_in_fullres + pxl_row_in_fullres, data = tp)
+  fit_yx <- stats::lm(imageY ~ pxl_col_in_fullres + pxl_row_in_fullres, data = tp)
+  
+  # build transformation matrix B
+  cx <- coef(fit_xy)
+  cy <- coef(fit_yx)
+  
+  B <- matrix(c(cx["pxl_col_in_fullres"], cx["pxl_row_in_fullres"], cx["(Intercept)"],
+                cy["pxl_col_in_fullres"], cy["pxl_row_in_fullres"], cy["(Intercept)"],
+                0, 0, 1), nrow = 3, byrow = TRUE)
+  
+  # add residuals to tp
+  tp$residuals_x <- residuals(fit_x)
+  tp$residuals_y <- residuals(fit_y)
+  tp$residual_distance <-  sqrt((tp$imageX - predict(fit_xy))^2 + (tp$imageY - predict(fit_yx))^2)
+  tp_list[[visium_sample]] <- tp
+  
+  json_validation[[visium_sample]] <- list("x"= list(lm = fit_x,
+                                                     lm_xy = fit_xy,
+                                                     diff_hires = summary(tp$hires_imageX - tp$imageX),
+                                                     diff_lowres = summary(tp$lowres_imageX - tp$imageX),
+                                                     abs_diff_hires = summary(abs(tp$hires_imageX - tp$imageX)),
+                                                     abs_diff_lowres = summary(abs(tp$lowres_imageX - tp$imageX)),
+                                                     cor_hires = cor(tp$hires_imageX, tp$imageX),
+                                                     cor_lowres = cor(tp$lowres_imageX, tp$imageX)),
+                                           "y"= list(lm = fit_y,
+                                                     lm_xy = fit_yx,
+                                                     diff_hires = summary(tp$hires_imageY - tp$imageY),
+                                                     diff_lowres = summary(tp$lowres_imageY - tp$imageY),
+                                                     abs_diff_hires = summary(abs(tp$hires_imageY - tp$imageY)),
+                                                     abs_diff_lowres = summary(abs(tp$lowres_imageY - tp$imageY)),
+                                                     cor_hires = cor(tp$hires_imageY, tp$imageY),
+                                                     cor_lowres = cor(tp$lowres_imageY, tp$imageY)),
+                                           "B"= B)}
+
+saveRDS(json_validation, file.path(tm_dir, "json_tp_transformation.rds"))
+
+
+
+
+

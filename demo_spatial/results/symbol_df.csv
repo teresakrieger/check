@@ -1,0 +1,7 @@
+"Sample_Name","Array_Size","Upper_left","Lower_left","Lower_right","Upper_right","range_cols","range_rows","range_x","range_y","range_imageX","range_imageY"
+"spatial_Glioblastoma","11mm","HOURGLASS","TRIANGLE","HEXOPEN","HEXFILLED","0-163","0-92","4288-16594","54442-66402","181.32924-2877.541","220.57327-2841.8481"
+"spatial_Human_Ovarian_Cancer","6.5mm","HOURGLASS","TRIANGLE","HEXOPEN","HEXFILLED","0-99","0-58","4288-11713","29652-37192","252.60397-1810.5464","172.74664-1754.774"
+"spatial_Human_Ovarian_Carcinoma","11mm","HOURGLASS","TRIANGLE","HEXOPEN","HEXFILLED","0-163","0-92","4288-16594","54442-66402","128.02101-2799.1006","167.96355-2765.0786"
+"spatial_Lung_Cancer","11mm","HOURGLASS","TRIANGLE","HEXOPEN","HEXFILLED","0-163","0-92","4288-16594","54442-66402","186.85767-2859.5342","215.78137-2814.2107"
+"spatial_Lung_Squamous_Cell_Carcinoma","6.5mm","HOURGLASS","TRIANGLE","HEXOPEN","HEXFILLED","0-99","0-58","4288-11713","56652-64192","131.96968-1747.0978","670.5544-2310.3992"
+"spatial_Skin_Melanoma","6.5mm","HOURGLASS","TRIANGLE","HEXOPEN","HEXFILLED","0-99","0-58","4288-11713","29652-37192","163.76938-1795.8705","641.2395-2298.313"
